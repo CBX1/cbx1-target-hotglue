@@ -47,4 +47,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 # CLI declaration
-target-api = 'target_api.target:TargetApi.cli'
+target-cbx1 = 'target_api.target:TargetApi.cli'
