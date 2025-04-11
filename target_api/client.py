@@ -5,6 +5,7 @@ import os
 from sys import getsizeof
 
 from pydantic import BaseModel
+from target_api.auth import Cbx1Authenticator
 from target_hotglue.auth import ApiAuthenticator
 from target_hotglue.client import HotglueBaseSink
 from target_hotglue.common import HGJSONEncoder
@@ -17,20 +18,15 @@ import backoff
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class ApiSink(HotglueBaseSink):
+    auth_state = {}
+
     @property
     def name(self):
         return self.stream_name
 
     @property
     def authenticator(self):
-        return (
-            ApiAuthenticator(
-                self._target,
-                header_name=self._config.get("api_key_header") or "x-api-key",
-            )
-            if self._config.get("auth", False) or self._config.get("api_key_url")
-            else None
-        )
+        return Cbx1Authenticator(self._target, self.auth_state)
 
     @property
     def base_url(self) -> str:
@@ -78,6 +74,8 @@ class ApiSink(HotglueBaseSink):
             if not isinstance(name, str) or not isinstance(value, str):
                 continue
             custom_headers[name] = value
+
+        custom_headers["Authorization"] = f"Bearer {self.authenticator.auth_headers}"
         return custom_headers
 
     @property

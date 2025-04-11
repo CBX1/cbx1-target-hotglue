@@ -37,6 +37,7 @@ class TargetApi(TargetHotglue):
         validate_config: bool = True,
         state: str = None
     ) -> None:
+        self.config_file = config[0]
         super().__init__(config, parse_env_config, validate_config, state)
 
         # NOTE: We want to override this with an ordered dict to enforce order when we iterate later

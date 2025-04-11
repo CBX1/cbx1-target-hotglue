@@ -57,6 +57,14 @@ environment variable is set either in the terminal context or in the `.env` file
 Developer TODO: If your target requires special access on the destination system, or any special authentication requirements, provide those here.
 -->
 
+#### JWT Authentication
+
+This target supports JWT token-based authentication for APIs that require it. The connector will:
+
+1. Make an API call to get a JWT token using an access key
+2. Add the JWT token to subsequent API calls 
+3. Automatically handle token expiry and renewal
+
 ## Usage
 
 You can easily run `target-api` by itself or in a pipeline using [Meltano](https://meltano.com/).
