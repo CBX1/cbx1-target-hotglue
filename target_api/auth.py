@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict
 
@@ -15,7 +16,7 @@ class Cbx1Authenticator:
     def __init__(self, target, state) -> None:
         self._config: Dict[str, Any] = target._config
         self.logger: logging.Logger = target.logger
-        self._auth_endpoint = "https://qa-api.cbx1.app/api/g/v1/auth/token/generate"
+        self._auth_endpoint = os.getenv("BASE_URL", default="https://qa-api.cbx1.app/") + "api/g/v1/auth/token/generate",
         self._target = target
         self.state = state
         self.config_file = target.config_file
