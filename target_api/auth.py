@@ -1,12 +1,13 @@
 import json
-from datetime import datetime, timedelta
-from typing import Optional
-from base64 import b64encode
-from typing import Any, Dict, Optional
-
 import logging
-import requests
+from datetime import datetime
+from typing import Any, Dict
+
 import backoff
+import requests
+
+from target_api.constants import ACCESS_KEY, CODE_KEY
+
 
 class Cbx1Authenticator:
     """API Authenticator for JWT flows."""
@@ -23,8 +24,7 @@ class Cbx1Authenticator:
     def auth_headers(self) -> dict:
         if not self.is_token_valid():
             self.update_access_token()
-        result = {}
-        result["Authorization"] = f"Bearer {self._config.get('access_token')}"
+        result = {"Authorization": f"Bearer {self._config.get(ACCESS_KEY)}"}
         return result
 
     @property
@@ -32,14 +32,14 @@ class Cbx1Authenticator:
         """Define the OAuth request body for the hubspot API."""
         return {
             "authenticationType": "ACCESS_KEY",
-            "accessKey": self._config.get("access_key"),
+            "code": self._config.get(CODE_KEY),
         }
 
     def is_token_valid(self) -> bool:
-        access_token = self._config.get("access_token")
+        access_token = self._config.get(ACCESS_KEY)
         now = round(datetime.utcnow().timestamp())
         expires_in = self._config.get("expires_in")
-        if  expires_in is not None:
+        if expires_in is not None:
             expires_in = int(expires_in)
         if not access_token:
             return False
@@ -60,11 +60,11 @@ class Cbx1Authenticator:
             raise RuntimeError(
                 f"Failed OAuth login, response was '{token_response.text()}'. {ex}"
             )
-        
+
         token_json = token_response.json().get("data", {})
 
         self.access_token = token_json.get("sessionToken")
-        self._config["access_token"] = token_json["sessionToken"]
+        self._config[ACCESS_KEY] = token_json["sessionToken"]
         self._config["refresh_token"] = token_json["refreshToken"]
         now = round(datetime.utcnow().timestamp())
         self._config["expires_in"] = now + token_json["maxAge"]
