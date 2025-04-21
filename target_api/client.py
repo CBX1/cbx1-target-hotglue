@@ -14,6 +14,7 @@ import urllib3
 from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 import backoff
 
+from target_api.constants import ORG_ID_KEY
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -56,6 +57,7 @@ class ApiSink(HotglueBaseSink):
             custom_headers[name] = value
 
         custom_headers["Authorization"] = f"Bearer {self.authenticator.access_token}"
+        custom_headers["x-organisation-id"] = self.stream.config.get(ORG_ID_KEY)
         return custom_headers
 
     @property
