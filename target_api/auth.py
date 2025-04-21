@@ -31,7 +31,6 @@ class Cbx1Authenticator:
 
     @property
     def oauth_request_body(self) -> dict:
-        """Define the OAuth request body for the hubspot API."""
         return {
             "authenticationType": "ACCESS_KEY",
             "code": self._config.get(CODE_KEY),
@@ -51,6 +50,7 @@ class Cbx1Authenticator:
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def update_access_token(self) -> None:
+        token_response = {}
         try:
             token_response = requests.get(
                 self._auth_endpoint, params=self.oauth_request_body
