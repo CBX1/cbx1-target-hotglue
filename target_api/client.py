@@ -30,31 +30,11 @@ class ApiSink(HotglueBaseSink):
 
     @property
     def base_url(self) -> str:
-        tenant_id = os.environ.get("TENANT")
-        flow_id = os.environ.get("FLOW")
-        tap = os.environ.get("TAP", None)
-        connector_id = os.environ.get("CONNECTOR_ID", None)
-
-        base_url = self._config["url"].format(
-            stream=self.stream_name,
-            tenant=tenant_id,
-            tenant_id=tenant_id,
-            flow=flow_id,
-            flow_id=flow_id,
-            tap=tap,
-            connector_id=connector_id,
-        )
-
-        if self._config.get("api_key_url"):
-            base_url += (
-                f"?{self._config.get('api_key_header')}={self._config.get('api_key')}"
-            )
-
-        return base_url
+        return os.getenv("BASE_URL", default="https://qa-api.cbx1.app/")
 
     @property
     def endpoint(self) -> str:
-        return ""
+        return f"api/t/v1/targets/{self.name}/upsert"
 
     @property
     def unified_schema(self) -> BaseModel:

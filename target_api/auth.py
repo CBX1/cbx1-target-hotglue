@@ -1,12 +1,14 @@
 import json
-from datetime import datetime, timedelta
-from typing import Optional
-from base64 import b64encode
-from typing import Any, Dict, Optional
-
 import logging
-import requests
+import os
+from datetime import datetime
+from typing import Any, Dict
+
 import backoff
+import requests
+
+from target_api.constants import ACCESS_TOKEN, CODE_KEY
+
 
 class Cbx1Authenticator:
     """API Authenticator for JWT flows."""
@@ -14,7 +16,7 @@ class Cbx1Authenticator:
     def __init__(self, target, state) -> None:
         self._config: Dict[str, Any] = target._config
         self.logger: logging.Logger = target.logger
-        self._auth_endpoint = "https://qa-api.cbx1.app/api/g/v1/auth/token/generate"
+        self._auth_endpoint = os.getenv("BASE_URL", default="https://qa-api.cbx1.app/") + "api/g/v1/auth/token/generate",
         self._target = target
         self.state = state
         self.config_file = target.config_file
@@ -24,7 +26,7 @@ class Cbx1Authenticator:
         if not self.is_token_valid():
             self.update_access_token()
         result = {}
-        result["Authorization"] = f"Bearer {self._config.get('access_token')}"
+        result["Authorization"] = f"Bearer {self._config.get(ACCESS_TOKEN)}"
         return result
 
     @property
@@ -32,20 +34,20 @@ class Cbx1Authenticator:
         """Define the OAuth request body for the hubspot API."""
         return {
             "authenticationType": "ACCESS_KEY",
-            "accessKey": self._config.get("access_key"),
+            "code": self._config.get(CODE_KEY),
         }
 
     def is_token_valid(self) -> bool:
-        access_token = self._config.get("access_token")
+        access_token = self._config.get(ACCESS_TOKEN)
         now = round(datetime.utcnow().timestamp())
         expires_in = self._config.get("expires_in")
-        if  expires_in is not None:
+        if expires_in is not None:
             expires_in = int(expires_in)
         if not access_token:
             return False
         if not expires_in:
             return False
-        return not ((expires_in - now) < 120)
+        return (expires_in - now) >= 120
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def update_access_token(self) -> None:
@@ -60,12 +62,11 @@ class Cbx1Authenticator:
             raise RuntimeError(
                 f"Failed OAuth login, response was '{token_response.text()}'. {ex}"
             )
-        
+
         token_json = token_response.json().get("data", {})
 
         self.access_token = token_json.get("sessionToken")
         self._config["access_token"] = token_json["sessionToken"]
-        self._config["refresh_token"] = token_json["refreshToken"]
         now = round(datetime.utcnow().timestamp())
         self._config["expires_in"] = now + token_json["maxAge"]
 
