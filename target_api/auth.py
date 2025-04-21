@@ -49,7 +49,7 @@ class Cbx1Authenticator:
             return False
         return (expires_in - now) >= 120
 
-    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
+    @backoff.on_exception(backoff.expo, Exception, max_tries=1)
     def update_access_token(self) -> None:
         token_response = {}
         try:
