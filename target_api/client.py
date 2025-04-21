@@ -55,7 +55,7 @@ class ApiSink(HotglueBaseSink):
                 continue
             custom_headers[name] = value
 
-        custom_headers["Authorization"] = f"Bearer {self.authenticator.auth_headers}"
+        custom_headers["Authorization"] = f"Bearer {self.authenticator.access_token}"
         return custom_headers
 
     @property
@@ -128,13 +128,11 @@ class ApiSink(HotglueBaseSink):
     def _request(
         self, http_method, endpoint, params={}, request_data=None, headers={}, verify=True
     ) -> requests.PreparedRequest:
-        """Prepare a request object."""
         url = self.url(endpoint)
         headers.update(self.default_headers)
         headers.update({"Content-Type": "application/json"})
         params.update(self.params)
 
-        # changing data dumping to be able to send {} for when post_empty_record is true
         data = (
             json.dumps(request_data, cls=HGJSONEncoder)
             if request_data is not None

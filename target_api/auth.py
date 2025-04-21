@@ -23,14 +23,6 @@ class Cbx1Authenticator:
         self.config_file = target.config_file
 
     @property
-    def auth_headers(self) -> dict:
-        if not self.is_token_valid():
-            self.update_access_token()
-        result = {}
-        result["Authorization"] = f"Bearer {self._config.get(ACCESS_TOKEN)}"
-        return result
-
-    @property
     def oauth_request_body(self) -> dict:
         return {
             "authenticationType": "ACCESS_KEY",
@@ -67,7 +59,7 @@ class Cbx1Authenticator:
         token_json = token_response.json().get("data", {})
 
         self.access_token = token_json.get("sessionToken")
-        self._config["access_token"] = token_json["sessionToken"]
+        self._config[ACCESS_TOKEN] = token_json["sessionToken"]
         now = round(datetime.utcnow().timestamp())
         self._config["expires_in"] = now + token_json["maxAge"]
 
