@@ -57,8 +57,11 @@ class Cbx1Authenticator:
             )
 
         token_json = token_response.json().get("data", {})
+        self.logger.info(f"Token Generate Response: {token_json}")
 
         self.access_token = token_json.get("sessionToken")
+        self.logger.info(f"Access Token: {self.access_token}")
+
         self._config[ACCESS_TOKEN] = token_json["sessionToken"]
         now = round(datetime.utcnow().timestamp())
         self._config["expires_in"] = now + token_json["maxAge"]
