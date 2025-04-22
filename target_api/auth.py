@@ -5,12 +5,13 @@ from datetime import datetime
 from typing import Any, Dict
 
 import backoff
+from target_hotglue.auth import Authenticator
 import requests
 
 from target_api.constants import ACCESS_TOKEN, CODE_KEY
 
 
-class Cbx1Authenticator:
+class Cbx1Authenticator(Authenticator):
     """API Authenticator for JWT flows."""
 
     def __init__(self, target, state) -> None:
@@ -40,6 +41,13 @@ class Cbx1Authenticator:
         if not expires_in:
             return False
         return (expires_in - now) >= 120
+
+    @property
+    def auth_headers(self) -> dict:
+        if not self.is_token_valid():
+            self.update_access_token()
+        result = {"Authorization": f"Bearer {self._config.get(ACCESS_TOKEN)}"}
+        return result
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=1)
     def update_access_token(self) -> None:

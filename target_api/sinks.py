@@ -37,7 +37,7 @@ class RecordSink(ApiSink, HotglueSink):
         id = None
 
         try:
-            id = response.json().get("id")
+            id = response.json().get("data").get("id")
         except Exception as e:
             self.logger.warning(f"Unable to get response's id: {e}")
 

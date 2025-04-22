@@ -57,7 +57,7 @@ class ApiSink(HotglueBaseSink):
             custom_headers[name] = value
 
         custom_headers["Authorization"] = f"Bearer {self.authenticator.access_token}"
-        custom_headers["x-organisation-id"] = self.stream.config.get(ORG_ID_KEY)
+        custom_headers["x-organisation-id"] = self.config.get(ORG_ID_KEY)
         return custom_headers
 
     @property
