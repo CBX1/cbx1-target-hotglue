@@ -8,7 +8,7 @@ import backoff
 from target_hotglue.auth import Authenticator
 import requests
 
-from target_api.constants import ACCESS_TOKEN, CODE_KEY
+from target_api.constants import ACCESS_TOKEN, CODE_KEY, ORG_ID_KEY
 
 
 class Cbx1Authenticator(Authenticator):
@@ -28,6 +28,7 @@ class Cbx1Authenticator(Authenticator):
         return {
             "authenticationType": "ACCESS_KEY",
             "code": self._config.get(CODE_KEY),
+            "orgId": self._config.get(ORG_ID_KEY),
         }
 
     def is_token_valid(self) -> bool:
