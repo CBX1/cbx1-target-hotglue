@@ -70,6 +70,3 @@ class Cbx1Authenticator(Authenticator):
         self._config[ACCESS_TOKEN] = token_json["sessionToken"]
         now = round(datetime.utcnow().timestamp())
         self._config["expires_in"] = now + token_json["maxAge"]
-
-        with open(self._target.config_file, "w") as outfile:
-            json.dump(self._config, outfile, indent=4)
