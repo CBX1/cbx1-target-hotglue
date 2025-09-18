@@ -31,7 +31,7 @@ class ApiSink(HotglueBaseSink):
 
     @property
     def base_url(self) -> str:
-        return os.getenv("BASE_URL", default="https://qa-api.cbx1.app/")
+        return os.getenv("BASE_URL")
 
     @property
     def endpoint(self) -> str:
