@@ -147,7 +147,8 @@ class ApiSink(HotglueBaseSink):
             params=params,
             headers=headers,
             data=data,
-            verify=verify
+            verify=verify,
+            timeout=30
         )
         self.validate_response(response)
         return response
