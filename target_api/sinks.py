@@ -145,7 +145,7 @@ class BatchSink(ApiSink, HotglueBatchSink):
         Parse bulk upsert response and build state payloads.
 
         Args:
-            response: Bulk upsert API response with results array
+            response: Bulk upsert API response with data.results array
             raw_records: Original input records (for externalId lookup)
             batch_external_id: Optional batch ID for tracking
 
@@ -153,7 +153,8 @@ class BatchSink(ApiSink, HotglueBatchSink):
             dict with state_updates list containing per-record states
         """
         state_updates = []
-        results = response.get("results", [])
+        data = response.get("data", {})
+        results = data.get("results", [])
 
         # Build lookup map: lookupKey -> externalId from input records
         lookup_field = self._get_lookup_field()
@@ -185,8 +186,8 @@ class BatchSink(ApiSink, HotglueBatchSink):
         return {
             "state_updates": state_updates,
             "summary": {
-                "totalProcessed": response.get("totalProcessed"),
-                "successful": response.get("successful"),
-                "failed": response.get("failed"),
+                "totalProcessed": data.get("totalProcessed"),
+                "successful": data.get("successful"),
+                "failed": data.get("failed"),
             }
         }
