@@ -156,10 +156,11 @@ class BatchSink(ApiSink, HotglueBatchSink):
         data = response.get("data", {})
         results = data.get("results", [])
 
-        # Build lookup map: lookupKey -> externalId from input records
+        # Build lookup map: lookupKey -> crmAssociationId from input records
+        # crmAssociationId is the external CRM ID (e.g., Salesforce/HubSpot record ID)
         lookup_field = self._get_lookup_field()
         external_id_by_lookup = {
-            record.get(lookup_field): record.get("externalId")
+            record.get(lookup_field): record.get("crmAssociationId")
             for record in raw_records
             if record.get(lookup_field)
         }
@@ -171,7 +172,7 @@ class BatchSink(ApiSink, HotglueBatchSink):
             state = {
                 "success": result.get("success"),
                 "id": result.get("id"),
-                "externalId": external_id,
+                "crmAssociationId": external_id,
                 "lookupKey": lookup_key,
             }
 
