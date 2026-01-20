@@ -41,6 +41,15 @@ class ApiSink(HotglueBaseSink):
     def bulk_endpoint(self) -> str:
         return f"api/t/v1/targets/{self.name}/bulk"
 
+    def _get_lookup_field(self) -> str:
+        """Return the lookup field based on stream name."""
+        stream_lower = self.stream_name.lower()
+        if "account" in stream_lower:
+            return "domain"
+        elif "contact" in stream_lower:
+            return "email"
+        return "id"
+
     @property
     def unified_schema(self) -> BaseModel:
         return None

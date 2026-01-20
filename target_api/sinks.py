@@ -41,7 +41,14 @@ class RecordSink(ApiSink, HotglueSink):
         except Exception as e:
             self.logger.warning(f"Unable to get response's id: {e}")
 
-        return id, response.ok, dict()
+        # Build state with externalId mapping for HotGlue UI
+        lookup_field = self._get_lookup_field()
+        state = {
+            "externalId": record.get("crmAssociationId"),
+            "lookupKey": record.get(lookup_field),
+        }
+
+        return id, response.ok, state
 
 
 class BatchSink(ApiSink, HotglueBatchSink):
@@ -131,15 +138,6 @@ class BatchSink(ApiSink, HotglueBatchSink):
                     state["hgBatchId"] = batch_external_id
                 self.update_state(state)
                 
-    def _get_lookup_field(self) -> str:
-        """Return the lookup field based on stream name."""
-        stream_lower = self.stream_name.lower()
-        if "account" in stream_lower:
-            return "domain"
-        elif "contact" in stream_lower:
-            return "email"
-        return "id"
-
     def handle_batch_response(self, response: dict, raw_records: List[dict], batch_external_id=None) -> dict:
         """
         Parse bulk upsert response and build state payloads.
