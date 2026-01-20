@@ -38,6 +38,10 @@ class ApiSink(HotglueBaseSink):
         return f"api/t/v1/targets/{self.name}/upsert"
 
     @property
+    def bulk_endpoint(self) -> str:
+        return f"api/t/v1/targets/{self.name}/bulk"
+
+    @property
     def unified_schema(self) -> BaseModel:
         return None
 

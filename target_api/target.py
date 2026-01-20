@@ -44,7 +44,7 @@ class TargetApi(TargetHotglue):
         self._sinks_active = OrderedDict()
 
     def get_sink_class(self, stream_name: str) -> Type[Sink]:
-        if self.config.get("process_as_batch"):
+        if self.config.get("process_as_batch", True):
             return BatchSink
         return RecordSink
 
