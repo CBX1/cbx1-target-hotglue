@@ -62,6 +62,23 @@ CRM sync requires mapping between CRM IDs and internal IDs:
 }
 ```
 
+### Batch Processing Pattern
+
+The `BatchSink` follows the HotGlue-recommended three-function pattern:
+
+```python
+# 1. Post batch to API, return full response
+def make_batch_request(self, records: List[dict]) -> dict
+
+# 2. Parse response, build per-record state with externalId mapping
+def handle_batch_response(self, response: dict, raw_records: List[dict]) -> dict
+
+# 3. Orchestrate batch, call update_state() per record
+def process_batch(self, context: dict) -> None
+```
+
+**Correlation strategy**: Use `lookupKey` (domain/email) to map `crmAssociationId` ↔ `internal id` rather than relying on array order.
+
 ### State Output
 
 Each record in state includes:
@@ -111,3 +128,4 @@ poetry run target-cbx1 --config config.json
 1. **External ID not showing in HotGlue UI**: Ensure state outputs `externalId` field (not `crmAssociationId`)
 2. **Domain/email required errors**: Records without lookup key fail validation
 3. **Batch failures**: Check `data.results` for per-record error messages
+4. **Response parsing errors**: Results are in `response["data"]["results"]`, not `response["results"]` - CBX1 API wraps responses in `{ status: {...}, data: {...} }`
