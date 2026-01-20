@@ -17,7 +17,7 @@ from target_hotglue.target_base import update_state
 class TargetApi(TargetHotglue):
     """Sample target for Api."""
 
-    name = "target-api"
+    name = "target-cbx1"
     SINK_TYPES = [RecordSink, BatchSink]
     target_counter = {}
 
