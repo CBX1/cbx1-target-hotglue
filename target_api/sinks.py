@@ -172,7 +172,7 @@ class BatchSink(ApiSink, HotglueBatchSink):
             state = {
                 "success": result.get("success"),
                 "id": result.get("id"),
-                "crmAssociationId": external_id,
+                "externalId": external_id,  # HotGlue UI expects 'externalId' for mapping display
                 "lookupKey": lookup_key,
             }
 
