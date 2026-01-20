@@ -17,7 +17,7 @@ from target_hotglue.target_base import update_state
 class TargetApi(TargetHotglue):
     """Sample target for Api."""
 
-    name = "target-api"
+    name = "target-cbx1"
     SINK_TYPES = [RecordSink, BatchSink]
     target_counter = {}
 
@@ -44,7 +44,7 @@ class TargetApi(TargetHotglue):
         self._sinks_active = OrderedDict()
 
     def get_sink_class(self, stream_name: str) -> Type[Sink]:
-        if self.config.get("process_as_batch"):
+        if self.config.get("process_as_batch", True):
             return BatchSink
         return RecordSink
 
