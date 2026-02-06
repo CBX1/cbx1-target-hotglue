@@ -12,6 +12,24 @@ import math
 import hashlib
 
 
+def _wrap_ingestion_record(record: dict, lookup_field: str) -> dict:
+    """
+    Transform record to IngestionRecord format.
+
+    Args:
+        record: Raw record with fields like email, domain, crmAssociationId
+        lookup_field: Field name to use as lookupKey (email or domain)
+
+    Returns:
+        IngestionRecord-formatted dict with lookupKey, data, sourceRecordId
+    """
+    return {
+        "lookupKey": record.get(lookup_field),
+        "data": record,  # Entire record goes into data field
+        "sourceRecordId": record.get("crmAssociationId")
+    }
+
+
 class RecordSink(ApiSink, HotglueSink):
     def preprocess_record(self, record: dict, context: dict) -> dict:
         if self.config.get("add_stream_key"):
@@ -30,19 +48,31 @@ class RecordSink(ApiSink, HotglueSink):
 
     def upsert_record(self, record: dict, context: dict):
         self.logger.info(f"Making request: {self.stream_name}")
+
+        # Transform to new format
+        lookup_field = self._get_lookup_field()
+        ingestion_record = _wrap_ingestion_record(record, lookup_field)
+        request_payload = {"records": [ingestion_record]}
+
         response = self.request_api(
-            self._config.get("method", "POST").upper(), request_data=record, headers=self.custom_headers, verify=False
+            self._config.get("method", "POST").upper(),
+            request_data=request_payload,
+            headers=self.custom_headers,
+            verify=False
         )
 
+        # Parse new response format
         id = None
-
         try:
-            id = response.json().get("data").get("id")
+            results = response.json().get("results", [])
+            if results:
+                result = results[0]
+                if result.get("status") == "SUCCESS":
+                    id = result.get("entityId")
         except Exception as e:
-            self.logger.warning(f"Unable to get response's id: {e}")
+            self.logger.warning(f"Unable to parse response: {e}")
 
         # Build state with externalId mapping for HotGlue UI
-        lookup_field = self._get_lookup_field()
         state = {
             "externalId": record.get("crmAssociationId"),
             "lookupKey": record.get(lookup_field),
@@ -80,16 +110,25 @@ class BatchSink(ApiSink, HotglueBatchSink):
 
     def make_batch_request(self, records: List[dict]):
         """
-        Post batch of records to bulk endpoint and return response.
+        Post batch of records to new integration endpoint.
 
         Returns:
-            dict: Full API response with results array for per-record handling
+            dict: API response with RecordIngestionResponse format
         """
         self.logger.info(f"Making bulk request: {self.stream_name} with {len(records)} records")
+
+        # Transform all records to IngestionRecord format
+        lookup_field = self._get_lookup_field()
+        ingestion_records = [
+            _wrap_ingestion_record(record, lookup_field)
+            for record in records
+        ]
+        request_payload = {"records": ingestion_records}
+
         response = self.request_api(
             "POST",
             endpoint=self.bulk_endpoint,
-            request_data=records,
+            request_data=request_payload,
             headers=self.custom_headers,
             verify=False
         )
@@ -140,10 +179,10 @@ class BatchSink(ApiSink, HotglueBatchSink):
                 
     def handle_batch_response(self, response: dict, raw_records: List[dict], batch_external_id=None) -> dict:
         """
-        Parse bulk upsert response and build state payloads.
+        Parse new IntegrationRecordsController response format.
 
         Args:
-            response: Bulk upsert API response with data.results array
+            response: Response with RecordIngestionResponse format
             raw_records: Original input records (for externalId lookup)
             batch_external_id: Optional batch ID for tracking
 
@@ -151,11 +190,9 @@ class BatchSink(ApiSink, HotglueBatchSink):
             dict with state_updates list containing per-record states
         """
         state_updates = []
-        data = response.get("data", {})
-        results = data.get("results", [])
+        results = response.get("results", [])
 
         # Build lookup map: lookupKey -> crmAssociationId from input records
-        # crmAssociationId is the external CRM ID (e.g., Salesforce/HubSpot record ID)
         lookup_field = self._get_lookup_field()
         external_id_by_lookup = {
             record.get(lookup_field): record.get("crmAssociationId")
@@ -167,17 +204,21 @@ class BatchSink(ApiSink, HotglueBatchSink):
             lookup_key = result.get("lookupKey")
             external_id = external_id_by_lookup.get(lookup_key)
 
+            # Map new status enum to boolean
+            status = result.get("status")  # SUCCESS, FAILED, or SKIPPED
+            success = (status == "SUCCESS")
+
             state = {
-                "success": result.get("success"),
-                "id": result.get("id"),
-                "externalId": external_id,  # HotGlue UI expects 'externalId' for mapping display
+                "success": success,
+                "id": str(result.get("entityId")) if result.get("entityId") else None,
+                "externalId": external_id,
                 "lookupKey": lookup_key,
             }
 
             if batch_external_id:
                 state["hgBatchId"] = batch_external_id
 
-            if not result.get("success"):
+            if not success:
                 state["error"] = result.get("error")
 
             state_updates.append(state)
@@ -185,8 +226,8 @@ class BatchSink(ApiSink, HotglueBatchSink):
         return {
             "state_updates": state_updates,
             "summary": {
-                "totalProcessed": data.get("totalProcessed"),
-                "successful": data.get("successful"),
-                "failed": data.get("failed"),
+                "totalProcessed": response.get("totalProcessed"),
+                "successful": response.get("successful"),
+                "failed": response.get("failed"),
             }
         }
