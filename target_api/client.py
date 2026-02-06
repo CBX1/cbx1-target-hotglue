@@ -33,13 +33,32 @@ class ApiSink(HotglueBaseSink):
     def base_url(self) -> str:
         return os.getenv("BASE_URL")
 
+    def _get_source(self) -> str:
+        """Get EnrichmentSource from CONNECTOR_ID env var."""
+        connector_id = os.getenv("CONNECTOR_ID", "").upper()
+        if connector_id not in ["SALESFORCE", "HUBSPOT"]:
+            raise ValueError(f"Invalid CONNECTOR_ID: {connector_id}. Must be 'salesforce' or 'hubspot'")
+        return connector_id
+
+    def _get_object_type(self) -> str:
+        """Map stream name to EntityType."""
+        stream_lower = self.stream_name.lower()
+        if "account" in stream_lower:
+            return "ACCOUNT"
+        elif "contact" in stream_lower:
+            return "CONTACT"
+        raise ValueError(f"Unsupported stream type: {self.stream_name}")
+
     @property
     def endpoint(self) -> str:
-        return f"api/t/v1/targets/{self.name}/upsert"
+        source = self._get_source()
+        object_type = self._get_object_type()
+        return f"api/t/v1/targets/integrations/{source}/{object_type}/records"
 
     @property
     def bulk_endpoint(self) -> str:
-        return f"api/t/v1/targets/{self.name}/bulk"
+        # Both single and bulk now use the same endpoint
+        return self.endpoint
 
     def _get_lookup_field(self) -> str:
         """Return the lookup field based on stream name."""
