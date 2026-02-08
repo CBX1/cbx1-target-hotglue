@@ -12,23 +12,6 @@ import math
 import hashlib
 
 
-def _wrap_ingestion_record(record: dict, lookup_field: str) -> dict:
-    """
-    Transform record to IngestionRecord format.
-
-    Args:
-        record: Raw record with fields like email, domain, crmAssociationId
-        lookup_field: Field name to use as lookupKey (email or domain)
-
-    Returns:
-        IngestionRecord-formatted dict with lookupKey, data, sourceRecordId
-    """
-    return {
-        "lookupKey": record.get(lookup_field),
-        "data": record,  # Entire record goes into data field
-        "sourceRecordId": record.get("crmAssociationId")
-    }
-
 
 class RecordSink(ApiSink, HotglueSink):
     def preprocess_record(self, record: dict, context: dict) -> dict:
@@ -49,10 +32,12 @@ class RecordSink(ApiSink, HotglueSink):
     def upsert_record(self, record: dict, context: dict):
         self.logger.info(f"Making request: {self.stream_name}")
 
-        # Transform to new format
-        lookup_field = self._get_lookup_field()
-        ingestion_record = _wrap_ingestion_record(record, lookup_field)
-        request_payload = {"records": [ingestion_record]}
+        # Only process if lookupKey exists
+        if record.get("lookupKey") is None:
+            self.logger.warning(f"Skipping record without lookupKey")
+            return None, False, {}
+
+        request_payload = {"records": [record]}
 
         response = self.request_api(
             self._config.get("method", "POST").upper(),
@@ -117,11 +102,10 @@ class BatchSink(ApiSink, HotglueBatchSink):
         """
         self.logger.info(f"Making bulk request: {self.stream_name} with {len(records)} records")
 
-        # Transform all records to IngestionRecord format
-        lookup_field = self._get_lookup_field()
         ingestion_records = [
-            _wrap_ingestion_record(record, lookup_field)
+            record
             for record in records
+            if record.get("lookupKey") is not None
         ]
         request_payload = {"records": ingestion_records}
 
