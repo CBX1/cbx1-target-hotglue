@@ -35,7 +35,7 @@ class ApiSink(HotglueBaseSink):
 
     def _get_source(self) -> str:
         """Get EnrichmentSource from CONNECTOR_ID env var."""
-        connector_id = os.getenv("CONNECTOR_ID", "").upper()
+        connector_id = os.getenv("CONNECTOR_ID", "HUBSPOT").upper()
         if connector_id not in ["SALESFORCE", "HUBSPOT"]:
             raise ValueError(f"Invalid CONNECTOR_ID: {connector_id}. Must be 'salesforce' or 'hubspot'")
         return connector_id
