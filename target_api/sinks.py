@@ -38,9 +38,12 @@ class RecordSink(ApiSink, HotglueSink):
             return None, False, {}
 
         request_payload = {"records": [record]}
+        
+        endpoint = self.get_endpoint(record)
 
         response = self.request_api(
             self._config.get("method", "POST").upper(),
+            endpoint=endpoint,
             request_data=request_payload,
             headers=self.custom_headers,
             verify=False
@@ -58,6 +61,7 @@ class RecordSink(ApiSink, HotglueSink):
             self.logger.warning(f"Unable to parse response: {e}")
 
         # Build state with externalId mapping for HotGlue UI
+        lookup_field = self._get_lookup_field()
         state = {
             "externalId": record.get("crmAssociationId"),
             "lookupKey": record.get(lookup_field),
@@ -108,10 +112,12 @@ class BatchSink(ApiSink, HotglueBatchSink):
             if record.get("lookupKey") is not None
         ]
         request_payload = {"records": ingestion_records}
+        
+        endpoint = self.get_bulk_endpoint(ingestion_records[0] if ingestion_records else None)
 
         response = self.request_api(
             "POST",
-            endpoint=self.bulk_endpoint,
+            endpoint=endpoint,
             request_data=request_payload,
             headers=self.custom_headers,
             verify=False

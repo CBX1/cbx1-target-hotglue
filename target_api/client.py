@@ -33,8 +33,13 @@ class ApiSink(HotglueBaseSink):
     def base_url(self) -> str:
         return os.getenv("BASE_URL")
 
-    def _get_source(self) -> str:
-        """Get EnrichmentSource from CONNECTOR_ID env var."""
+    def _get_source(self, record: dict = None) -> str:
+        """Get EnrichmentSource from record.source or CONNECTOR_ID env var."""
+        if record and record.get("source"):
+            source = record.get("source").upper()
+            if source in ["SALESFORCE", "HUBSPOT"]:
+                return source
+        
         connector_id = os.getenv("CONNECTOR_ID", "HUBSPOT").upper()
         if connector_id not in ["SALESFORCE", "HUBSPOT"]:
             raise ValueError(f"Invalid CONNECTOR_ID: {connector_id}. Must be 'salesforce' or 'hubspot'")
@@ -49,12 +54,20 @@ class ApiSink(HotglueBaseSink):
             return "CONTACT"
         raise ValueError(f"Unsupported stream type: {self.stream_name}")
 
-    @property
-    def endpoint(self) -> str:
-        source = self._get_source()
+    def get_endpoint(self, record: dict = None) -> str:
+        """Get endpoint for a specific record or use default."""
+        source = self._get_source(record)
         object_type = self._get_object_type()
         return f"api/t/v1/targets/integrations/{source}/{object_type}/records"
+    
+    @property
+    def endpoint(self) -> str:
+        return self.get_endpoint()
 
+    def get_bulk_endpoint(self, record: dict = None) -> str:
+        """Get bulk endpoint for a specific record or use default."""
+        return self.get_endpoint(record)
+    
     @property
     def bulk_endpoint(self) -> str:
         # Both single and bulk now use the same endpoint
