@@ -61,10 +61,9 @@ class RecordSink(ApiSink, HotglueSink):
             self.logger.warning(f"Unable to parse response: {e}")
 
         # Build state with externalId mapping for HotGlue UI
-        lookup_field = self._get_lookup_field()
         state = {
-            "externalId": record.get("crmAssociationId"),
-            "lookupKey": record.get(lookup_field),
+            "externalId": record.get("sourceRecordId"),
+            "lookupKey": record.get("lookupKey"),
         }
 
         return id, response.ok, state
@@ -180,14 +179,16 @@ class BatchSink(ApiSink, HotglueBatchSink):
             dict with state_updates list containing per-record states
         """
         state_updates = []
-        results = response.get("results", [])
+        
+        # Extract data from nested structure
+        data = response.get("data", {})
+        results = data.get("results", [])
 
-        # Build lookup map: lookupKey -> crmAssociationId from input records
-        lookup_field = self._get_lookup_field()
+        # Build lookup map: lookupKey -> sourceRecordId from input records
         external_id_by_lookup = {
-            record.get(lookup_field): record.get("crmAssociationId")
+            record.get("lookupKey"): record.get("sourceRecordId")
             for record in raw_records
-            if record.get(lookup_field)
+            if record.get("lookupKey")
         }
 
         for result in results:
@@ -216,8 +217,8 @@ class BatchSink(ApiSink, HotglueBatchSink):
         return {
             "state_updates": state_updates,
             "summary": {
-                "totalProcessed": response.get("totalProcessed"),
-                "successful": response.get("successful"),
-                "failed": response.get("failed"),
+                "totalProcessed": data.get("totalProcessed"),
+                "successful": data.get("successful"),
+                "failed": data.get("failed"),
             }
         }
