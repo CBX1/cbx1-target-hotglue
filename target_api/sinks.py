@@ -12,6 +12,7 @@ import math
 import hashlib
 
 
+
 class RecordSink(ApiSink, HotglueSink):
     def preprocess_record(self, record: dict, context: dict) -> dict:
         if self.config.get("add_stream_key"):
@@ -30,22 +31,41 @@ class RecordSink(ApiSink, HotglueSink):
 
     def upsert_record(self, record: dict, context: dict):
         self.logger.info(f"Making request: {self.stream_name}")
+
+        # Only process if lookupKey exists
+        if record.get("lookupKey") is None:
+            self.logger.warning(f"Skipping record without lookupKey")
+            return None, False, {}
+
+        request_payload = {"records": [record]}
+        
+        endpoint = self.get_endpoint(record)
+
         response = self.request_api(
-            self._config.get("method", "POST").upper(), request_data=record, headers=self.custom_headers, verify=False
+            self._config.get("method", "POST").upper(),
+            endpoint=endpoint,
+            request_data=request_payload,
+            headers=self.custom_headers,
+            verify=False
         )
 
+        # Parse GenericResponse<RecordIngestionResponse> format
+        # Response structure: {"status": {...}, "data": {"results": [...]}}
         id = None
-
         try:
-            id = response.json().get("data").get("id")
+            data = response.json().get("data", {})
+            results = data.get("results", [])
+            if results:
+                result = results[0]
+                if result.get("status") == "SUCCESS":
+                    id = result.get("entityId")
         except Exception as e:
-            self.logger.warning(f"Unable to get response's id: {e}")
+            self.logger.warning(f"Unable to parse response: {e}")
 
         # Build state with externalId mapping for HotGlue UI
-        lookup_field = self._get_lookup_field()
         state = {
-            "externalId": record.get("crmAssociationId"),
-            "lookupKey": record.get(lookup_field),
+            "externalId": record.get("sourceRecordId"),
+            "lookupKey": record.get("lookupKey"),
         }
 
         return id, response.ok, state
@@ -58,10 +78,10 @@ class BatchSink(ApiSink, HotglueBatchSink):
     @property
     def max_size(self):
         if self.config.get("process_as_batch"):
-            batch_size = self.config.get("batch_size", 20)
+            batch_size = self.config.get("batch_size", 10)
             if batch_size:
                 return int(batch_size)
-        return 20
+        return 10
 
     def process_batch_record(self, record: dict, index: int) -> dict:
         if self.config.get("add_stream_key"):
@@ -80,16 +100,26 @@ class BatchSink(ApiSink, HotglueBatchSink):
 
     def make_batch_request(self, records: List[dict]):
         """
-        Post batch of records to bulk endpoint and return response.
+        Post batch of records to new integration endpoint.
 
         Returns:
-            dict: Full API response with results array for per-record handling
+            dict: API response with RecordIngestionResponse format
         """
         self.logger.info(f"Making bulk request: {self.stream_name} with {len(records)} records")
+
+        ingestion_records = [
+            record
+            for record in records
+            if record.get("lookupKey") is not None
+        ]
+        request_payload = {"records": ingestion_records}
+        
+        endpoint = self.get_bulk_endpoint(ingestion_records[0] if ingestion_records else None)
+
         response = self.request_api(
             "POST",
-            endpoint=self.bulk_endpoint,
-            request_data=records,
+            endpoint=endpoint,
+            request_data=request_payload,
             headers=self.custom_headers,
             verify=False
         )
@@ -140,10 +170,10 @@ class BatchSink(ApiSink, HotglueBatchSink):
                 
     def handle_batch_response(self, response: dict, raw_records: List[dict], batch_external_id=None) -> dict:
         """
-        Parse bulk upsert response and build state payloads.
+        Parse new IntegrationRecordsController response format.
 
         Args:
-            response: Bulk upsert API response with data.results array
+            response: Response with RecordIngestionResponse format
             raw_records: Original input records (for externalId lookup)
             batch_external_id: Optional batch ID for tracking
 
@@ -151,33 +181,37 @@ class BatchSink(ApiSink, HotglueBatchSink):
             dict with state_updates list containing per-record states
         """
         state_updates = []
+        
+        # Extract data from nested structure
         data = response.get("data", {})
         results = data.get("results", [])
 
-        # Build lookup map: lookupKey -> crmAssociationId from input records
-        # crmAssociationId is the external CRM ID (e.g., Salesforce/HubSpot record ID)
-        lookup_field = self._get_lookup_field()
+        # Build lookup map: lookupKey -> sourceRecordId from input records
         external_id_by_lookup = {
-            record.get(lookup_field): record.get("crmAssociationId")
+            record.get("lookupKey"): record.get("sourceRecordId")
             for record in raw_records
-            if record.get(lookup_field)
+            if record.get("lookupKey")
         }
 
         for result in results:
             lookup_key = result.get("lookupKey")
             external_id = external_id_by_lookup.get(lookup_key)
 
+            # Map new status enum to boolean
+            status = result.get("status")  # SUCCESS, FAILED, or SKIPPED
+            success = (status == "SUCCESS")
+
             state = {
-                "success": result.get("success"),
-                "id": result.get("id"),
-                "externalId": external_id,  # HotGlue UI expects 'externalId' for mapping display
+                "success": success,
+                "id": str(result.get("entityId")) if result.get("entityId") else None,
+                "externalId": external_id,
                 "lookupKey": lookup_key,
             }
 
             if batch_external_id:
                 state["hgBatchId"] = batch_external_id
 
-            if not result.get("success"):
+            if not success:
                 state["error"] = result.get("error")
 
             state_updates.append(state)

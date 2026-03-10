@@ -33,20 +33,53 @@ class ApiSink(HotglueBaseSink):
     def base_url(self) -> str:
         return os.getenv("BASE_URL")
 
+    def _get_source(self, record: dict = None) -> str:
+        """Get EnrichmentSource from record.source or CONNECTOR_ID env var."""
+        valid_sources = ["SALESFORCE", "HUBSPOT", "MARKETO"]
+        if record and record.get("source"):
+            source = record.get("source").upper()
+            if source in valid_sources:
+                return source
+
+        connector_id = os.getenv("CONNECTOR_ID", "HUBSPOT").upper()
+        if connector_id not in valid_sources:
+            raise ValueError(f"Invalid CONNECTOR_ID: {connector_id}. Must be one of: {', '.join(valid_sources)}")
+        return connector_id
+
+    def _get_object_type(self) -> str:
+        """Map stream name to EntityType."""
+        stream_lower = self.stream_name.lower()
+        if "account" in stream_lower or "company" in stream_lower or "companies" in stream_lower:
+            return "ACCOUNT"
+        elif "contact" in stream_lower or "lead" in stream_lower:
+            return "CONTACT"
+        raise ValueError(f"Unsupported stream type: {self.stream_name}")
+
+    def get_endpoint(self, record: dict = None) -> str:
+        """Get endpoint for a specific record or use default."""
+        source = self._get_source(record)
+        object_type = self._get_object_type()
+        return f"api/t/v1/targets/integrations/{source}/{object_type}/records"
+    
     @property
     def endpoint(self) -> str:
-        return f"api/t/v1/targets/{self.name}/upsert"
+        return self.get_endpoint()
 
+    def get_bulk_endpoint(self, record: dict = None) -> str:
+        """Get bulk endpoint for a specific record or use default."""
+        return self.get_endpoint(record)
+    
     @property
     def bulk_endpoint(self) -> str:
-        return f"api/t/v1/targets/{self.name}/bulk"
+        # Both single and bulk now use the same endpoint
+        return self.endpoint
 
     def _get_lookup_field(self) -> str:
         """Return the lookup field based on stream name."""
         stream_lower = self.stream_name.lower()
-        if "account" in stream_lower:
+        if "account" in stream_lower or "company" in stream_lower or "companies" in stream_lower:
             return "domain"
-        elif "contact" in stream_lower:
+        elif "contact" in stream_lower or "lead" in stream_lower:
             return "email"
         return "id"
 
