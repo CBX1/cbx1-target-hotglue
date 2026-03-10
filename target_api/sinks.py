@@ -49,10 +49,12 @@ class RecordSink(ApiSink, HotglueSink):
             verify=False
         )
 
-        # Parse new response format
+        # Parse GenericResponse<RecordIngestionResponse> format
+        # Response structure: {"status": {...}, "data": {"results": [...]}}
         id = None
         try:
-            results = response.json().get("results", [])
+            data = response.json().get("data", {})
+            results = data.get("results", [])
             if results:
                 result = results[0]
                 if result.get("status") == "SUCCESS":
