@@ -35,22 +35,23 @@ class ApiSink(HotglueBaseSink):
 
     def _get_source(self, record: dict = None) -> str:
         """Get EnrichmentSource from record.source or CONNECTOR_ID env var."""
+        valid_sources = ["SALESFORCE", "HUBSPOT", "MARKETO"]
         if record and record.get("source"):
             source = record.get("source").upper()
-            if source in ["SALESFORCE", "HUBSPOT"]:
+            if source in valid_sources:
                 return source
-        
+
         connector_id = os.getenv("CONNECTOR_ID", "HUBSPOT").upper()
-        if connector_id not in ["SALESFORCE", "HUBSPOT"]:
-            raise ValueError(f"Invalid CONNECTOR_ID: {connector_id}. Must be 'salesforce' or 'hubspot'")
+        if connector_id not in valid_sources:
+            raise ValueError(f"Invalid CONNECTOR_ID: {connector_id}. Must be one of: {', '.join(valid_sources)}")
         return connector_id
 
     def _get_object_type(self) -> str:
         """Map stream name to EntityType."""
         stream_lower = self.stream_name.lower()
-        if "account" in stream_lower:
+        if "account" in stream_lower or "compan" in stream_lower:
             return "ACCOUNT"
-        elif "contact" in stream_lower:
+        elif "contact" in stream_lower or "lead" in stream_lower:
             return "CONTACT"
         raise ValueError(f"Unsupported stream type: {self.stream_name}")
 
@@ -76,9 +77,9 @@ class ApiSink(HotglueBaseSink):
     def _get_lookup_field(self) -> str:
         """Return the lookup field based on stream name."""
         stream_lower = self.stream_name.lower()
-        if "account" in stream_lower:
+        if "account" in stream_lower or "compan" in stream_lower:
             return "domain"
-        elif "contact" in stream_lower:
+        elif "contact" in stream_lower or "lead" in stream_lower:
             return "email"
         return "id"
 
