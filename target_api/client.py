@@ -49,7 +49,7 @@ class ApiSink(HotglueBaseSink):
     def _get_object_type(self) -> str:
         """Map stream name to EntityType."""
         stream_lower = self.stream_name.lower()
-        if "account" in stream_lower or "compan" in stream_lower:
+        if "account" in stream_lower or "company" in stream_lower or "companies" in stream_lower:
             return "ACCOUNT"
         elif "contact" in stream_lower or "lead" in stream_lower:
             return "CONTACT"
@@ -77,7 +77,7 @@ class ApiSink(HotglueBaseSink):
     def _get_lookup_field(self) -> str:
         """Return the lookup field based on stream name."""
         stream_lower = self.stream_name.lower()
-        if "account" in stream_lower or "compan" in stream_lower:
+        if "account" in stream_lower or "company" in stream_lower or "companies" in stream_lower:
             return "domain"
         elif "contact" in stream_lower or "lead" in stream_lower:
             return "email"
