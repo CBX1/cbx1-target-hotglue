@@ -98,7 +98,7 @@ class TargetApi(TargetHotglue):
                           is called after the target instance has finished
                           listening to the stdin
         """
-        state = copy.deepcopy(self._latest_state)
+        state = copy.deepcopy(self._latest_state) or {}
         self._drain_all(self._sinks_to_clear, 1)
         if is_endofpipe:
             for sink in self._sinks_to_clear:
@@ -117,8 +117,10 @@ class TargetApi(TargetHotglue):
             if s.name not in state.get("bookmarks", []):
                 state = update_state(state, s.latest_state, self.logger)
             else:
-                state["bookmarks"][s.name] = s.latest_state["bookmarks"][s.name]
-                state["summary"][s.name] = s.latest_state["summary"][s.name]
+                if isinstance(state.get("bookmarks"), dict):
+                    state["bookmarks"][s.name] = s.latest_state["bookmarks"][s.name]
+                if isinstance(state.get("summary"), dict):
+                    state["summary"][s.name] = s.latest_state["summary"][s.name]
         
         # for single record sinks drain_all is executed after processing the records therefore the latest_state is already populated
         # when there is no records drain_all is executed first so we process and write the state in drain_one and avoid writing an extra state here
