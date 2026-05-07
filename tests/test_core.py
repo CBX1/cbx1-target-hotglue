@@ -94,3 +94,32 @@ def test_batch_sink_drains_when_full(tmp_path, monkeypatch):
         )
 
     assert drain_calls == [("contacts", 2)]
+
+
+def test_drain_all_drains_active_sinks_sequentially(tmp_path, monkeypatch):
+    """Final drain should not process multiple stream sinks concurrently."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"process_as_batch": True, "batch_size": 20, "OrgId": "org-id"})
+    )
+
+    target = TargetApi(config=[str(config_path)], validate_config=False)
+    calls = []
+
+    def fake_drain_all(sinks, parallelism):
+        calls.append(([sink.stream_name for sink in sinks], parallelism))
+
+    monkeypatch.setattr(target, "_drain_all", fake_drain_all)
+    target._sinks_active = {
+        "accounts": t.cast(t.Any, type("Sink", (), {"stream_name": "accounts"})()),
+        "contacts": t.cast(t.Any, type("Sink", (), {"stream_name": "contacts"})()),
+    }
+    monkeypatch.setattr(target, "_write_state_message", lambda state: None)
+    monkeypatch.setattr(target, "_reset_max_record_age", lambda: None)
+
+    target.drain_all()
+
+    assert calls == [
+        ([], 1),
+        (["accounts", "contacts"], 1),
+    ]
