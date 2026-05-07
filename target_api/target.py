@@ -105,7 +105,8 @@ class TargetApi(TargetHotglue):
                 if sink:
                     sink.clean_up()
         self._sinks_to_clear = []
-        self._drain_all(list(self._sinks_active.values()), self.max_parallelism)
+        # Drain stream sinks one at a time so final partial batches cannot race.
+        self._drain_all(list(self._sinks_active.values()), 1)
         if is_endofpipe:
             for sink in self._sinks_active.values():
                 if sink:
