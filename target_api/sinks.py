@@ -33,7 +33,15 @@ def _scrub_utf8(value: Any, path: str, dropped: List[str]) -> Any:
     if isinstance(value, dict):
         cleaned: dict = {}
         for k, v in value.items():
-            child = f"{path}.{k}" if path else k
+            if isinstance(k, str):
+                try:
+                    k.encode("utf-8")
+                except UnicodeEncodeError:
+                    # Mask the bad key in the path — the raw key cannot be
+                    # safely formatted into log handlers.
+                    dropped.append(f"{path}.<bad-key>" if path else "<bad-key>")
+                    continue
+            child = f"{path}.{k}" if path else str(k)
             new_v = _scrub_utf8(v, child, dropped)
             if new_v is _DROP:
                 continue
@@ -173,6 +181,13 @@ class BatchSink(ApiSink, HotglueBatchSink):
             for record in records
             if record.get("lookupKey") is not None
         ]
+        skipped = len(records) - len(ingestion_records)
+        if skipped:
+            self.logger.warning(
+                "Skipping %d %s record(s) without lookupKey (e.g. dropped during UTF-8 sanitization)",
+                skipped,
+                self.stream_name,
+            )
         request_payload = {"records": ingestion_records}
         
         endpoint = self.get_bulk_endpoint(ingestion_records[0] if ingestion_records else None)

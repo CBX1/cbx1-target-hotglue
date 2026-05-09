@@ -175,6 +175,30 @@ def test_sanitize_record_utf8_passthrough_for_clean_record():
     assert cleaned == record
 
 
+def test_sanitize_record_utf8_drops_invalid_dict_keys():
+    """Lone-surrogate dict keys can't be UTF-8 encoded; the whole pair must
+    be dropped so json.dumps can't ship a malformed key to CBX1."""
+    bad_key = "key-\udce9"
+    record = {
+        "sourceRecordId": "rec-4",
+        bad_key: "outer-value",
+        "data": {
+            "good": "ok",
+            bad_key: "inner-value",
+        },
+    }
+
+    cleaned = sanitize_record_utf8(record, "contacts", logging.getLogger("test"))
+
+    assert bad_key not in cleaned
+    assert bad_key not in cleaned["data"]
+    assert cleaned == {
+        "sourceRecordId": "rec-4",
+        "data": {"good": "ok"},
+    }
+    json.dumps(cleaned).encode("utf-8")
+
+
 def test_sanitize_record_utf8_drops_lookupkey_when_invalid():
     """If the lookupKey itself is malformed, the field is dropped — the
     existing 'no lookupKey' guard then skips the record at request time."""
