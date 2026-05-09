@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from typing import List
+import logging
+from typing import Any, List
 
 from target_hotglue.client import HotglueBatchSink, HotglueSink
 
@@ -12,9 +13,67 @@ import math
 import hashlib
 
 
+_DROP = object()
+
+
+def _scrub_utf8(value: Any, path: str, dropped: List[str]) -> Any:
+    """Recursively replace non-UTF-8 strings with the _DROP sentinel.
+
+    A string fails the check when it contains lone surrogates (e.g. data
+    decoded with errors='surrogateescape') and cannot be encoded as UTF-8.
+    Containers are kept; only the offending leaf is dropped.
+    """
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            dropped.append(path or "<root>")
+            return _DROP
+        return value
+    if isinstance(value, dict):
+        cleaned: dict = {}
+        for k, v in value.items():
+            child = f"{path}.{k}" if path else k
+            new_v = _scrub_utf8(v, child, dropped)
+            if new_v is _DROP:
+                continue
+            cleaned[k] = new_v
+        return cleaned
+    if isinstance(value, list):
+        cleaned_list: list = []
+        for i, v in enumerate(value):
+            child = f"{path}[{i}]"
+            new_v = _scrub_utf8(v, child, dropped)
+            if new_v is _DROP:
+                continue
+            cleaned_list.append(new_v)
+        return cleaned_list
+    return value
+
+
+def sanitize_record_utf8(
+    record: dict,
+    stream_name: str,
+    logger: logging.Logger,
+) -> dict:
+    """Drop fields whose string values are not valid UTF-8. Logs each drop."""
+    dropped: List[str] = []
+    cleaned = _scrub_utf8(record, "", dropped)
+    if dropped:
+        logger.warning(
+            "Dropped %d non-UTF-8 field(s) from %s record (sourceRecordId=%s): %s",
+            len(dropped),
+            stream_name,
+            record.get("sourceRecordId"),
+            ", ".join(dropped),
+        )
+    return cleaned
+
 
 class RecordSink(ApiSink, HotglueSink):
     def preprocess_record(self, record: dict, context: dict) -> dict:
+        record = sanitize_record_utf8(record, self.stream_name, self.logger)
+
         if self.config.get("add_stream_key"):
             record["stream"] = self.stream_name
 
@@ -84,9 +143,11 @@ class BatchSink(ApiSink, HotglueBatchSink):
         return 10
 
     def process_batch_record(self, record: dict, index: int) -> dict:
+        record = sanitize_record_utf8(record, self.stream_name, self.logger)
+
         if self.config.get("add_stream_key"):
             record["stream"] = self.stream_name
-            
+
         if self.config.get("metadata", None):
             metadata = record.get("metadata") or {}
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import typing as t
 
 import pytest
@@ -12,6 +13,7 @@ try:
 except ImportError:
     get_target_test_class = None
 
+from target_api.sinks import sanitize_record_utf8
 from target_api.target import TargetApi
 
 # TODO: Initialize minimal target config
@@ -123,3 +125,65 @@ def test_drain_all_drains_active_sinks_sequentially(tmp_path, monkeypatch):
         ([], 1),
         (["accounts", "contacts"], 1),
     ]
+
+
+def test_sanitize_record_utf8_drops_only_offending_field(caplog):
+    """Non-UTF-8 fields are dropped at the leaf; sibling fields and the
+    surrounding record/structure survive. JSON-serializable result."""
+    bad = "lone-surrogate-\udce9"  # cannot encode as UTF-8
+    record = {
+        "sourceRecordId": "rec-1",
+        "lookupKey": "user@example.com",
+        "firstName": bad,
+        "data": {
+            "company": "Acme",
+            "notes": bad,
+            "tags": ["clean", bad, "also-clean"],
+        },
+    }
+
+    with caplog.at_level(logging.WARNING):
+        cleaned = sanitize_record_utf8(record, "contacts", logging.getLogger("test"))
+
+    assert cleaned == {
+        "sourceRecordId": "rec-1",
+        "lookupKey": "user@example.com",
+        "data": {
+            "company": "Acme",
+            "tags": ["clean", "also-clean"],
+        },
+    }
+    # Sanitized record must round-trip through json without errors.
+    json.dumps(cleaned).encode("utf-8")
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    msg = warnings[0].getMessage()
+    assert "firstName" in msg
+    assert "data.notes" in msg
+    assert "data.tags[1]" in msg
+    assert "rec-1" in msg
+
+
+def test_sanitize_record_utf8_passthrough_for_clean_record():
+    record = {
+        "sourceRecordId": "rec-2",
+        "lookupKey": "héllo@example.com",
+        "data": {"name": "Zoë", "tags": ["α", "β"]},
+    }
+    cleaned = sanitize_record_utf8(record, "contacts", logging.getLogger("test"))
+    assert cleaned == record
+
+
+def test_sanitize_record_utf8_drops_lookupkey_when_invalid():
+    """If the lookupKey itself is malformed, the field is dropped — the
+    existing 'no lookupKey' guard then skips the record at request time."""
+    record = {
+        "sourceRecordId": "rec-3",
+        "lookupKey": "bad-\udce9-domain.com",
+        "domain": "bad-\udce9-domain.com",
+    }
+    cleaned = sanitize_record_utf8(record, "accounts", logging.getLogger("test"))
+    assert "lookupKey" not in cleaned
+    assert "domain" not in cleaned
+    assert cleaned["sourceRecordId"] == "rec-3"
