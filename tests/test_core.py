@@ -127,10 +127,50 @@ def test_drain_all_drains_active_sinks_sequentially(tmp_path, monkeypatch):
     ]
 
 
-def test_sanitize_record_utf8_drops_only_offending_field(caplog):
-    """Non-UTF-8 fields are dropped at the leaf; sibling fields and the
-    surrounding record/structure survive. JSON-serializable result."""
-    bad = "lone-surrogate-\udce9"  # cannot encode as UTF-8
+def test_sanitize_record_utf8_repairs_mojibake(caplog):
+    """Mojibake — UTF-8 bytes that were decoded as latin-1 and re-encoded as
+    UTF-8 — is salvageable. ftfy reverses it, so the original name reaches
+    CBX1 instead of being silently dropped."""
+    record = {
+        "sourceRecordId": "rec-mojibake",
+        "lookupKey": "user@example.com",
+        "firstName": "CafÃ©",  # mojibake of "Café"
+        "lastName": "MÃ¼ller",  # mojibake of "Müller"
+        "data": {
+            "company": "Acme",
+            "notes": "naÃ¯ve",  # mojibake of "naïve"
+        },
+    }
+
+    with caplog.at_level(logging.WARNING):
+        cleaned = sanitize_record_utf8(record, "contacts", logging.getLogger("test"))
+
+    assert cleaned == {
+        "sourceRecordId": "rec-mojibake",
+        "lookupKey": "user@example.com",
+        "firstName": "Café",
+        "lastName": "Müller",
+        "data": {
+            "company": "Acme",
+            "notes": "naïve",
+        },
+    }
+    json.dumps(cleaned).encode("utf-8")
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    msg = warnings[0].getMessage()
+    assert "Repaired" in msg
+    assert "firstName" in msg
+    assert "lastName" in msg
+    assert "data.notes" in msg
+
+
+def test_sanitize_record_utf8_repairs_lone_surrogates(caplog):
+    """Lone surrogates (from errors='surrogateescape' decoding) get replaced
+    with U+FFFD via ftfy — the field is preserved so any remaining valid
+    context survives, instead of dropping the whole leaf."""
+    bad = "lone-surrogate-\udce9"
     record = {
         "sourceRecordId": "rec-1",
         "lookupKey": "user@example.com",
@@ -145,40 +185,54 @@ def test_sanitize_record_utf8_drops_only_offending_field(caplog):
     with caplog.at_level(logging.WARNING):
         cleaned = sanitize_record_utf8(record, "contacts", logging.getLogger("test"))
 
+    repaired_value = "lone-surrogate-�"
     assert cleaned == {
         "sourceRecordId": "rec-1",
         "lookupKey": "user@example.com",
+        "firstName": repaired_value,
         "data": {
             "company": "Acme",
-            "tags": ["clean", "also-clean"],
+            "notes": repaired_value,
+            "tags": ["clean", repaired_value, "also-clean"],
         },
     }
-    # Sanitized record must round-trip through json without errors.
     json.dumps(cleaned).encode("utf-8")
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
     msg = warnings[0].getMessage()
+    assert "Repaired" in msg
     assert "firstName" in msg
     assert "data.notes" in msg
     assert "data.tags[1]" in msg
     assert "rec-1" in msg
 
 
-def test_sanitize_record_utf8_passthrough_for_clean_record():
+def test_sanitize_record_utf8_passthrough_for_clean_record(caplog):
+    """Clean UTF-8 strings — including non-ASCII names like Zoë and the
+    intentionally weird 'X Æ A-Xii' / 'John 3rd' — pass through unchanged
+    with no log output."""
     record = {
         "sourceRecordId": "rec-2",
         "lookupKey": "héllo@example.com",
+        "firstName": "X Æ A-Xii",
+        "middleName": "John 3rd",
         "data": {"name": "Zoë", "tags": ["α", "β"]},
     }
-    cleaned = sanitize_record_utf8(record, "contacts", logging.getLogger("test"))
+    with caplog.at_level(logging.WARNING):
+        cleaned = sanitize_record_utf8(
+            record, "contacts", logging.getLogger("test")
+        )
     assert cleaned == record
+    assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
 
 
-def test_sanitize_record_utf8_drops_invalid_dict_keys():
-    """Lone-surrogate dict keys can't be UTF-8 encoded; the whole pair must
-    be dropped so json.dumps can't ship a malformed key to CBX1."""
+def test_sanitize_record_utf8_repairs_invalid_dict_keys():
+    """Lone-surrogate dict keys are repaired (replaced with U+FFFD) so
+    json.dumps stops shipping malformed keys to CBX1 — both at the top
+    level and nested."""
     bad_key = "key-\udce9"
+    repaired_key = "key-�"
     record = {
         "sourceRecordId": "rec-4",
         bad_key: "outer-value",
@@ -194,20 +248,25 @@ def test_sanitize_record_utf8_drops_invalid_dict_keys():
     assert bad_key not in cleaned["data"]
     assert cleaned == {
         "sourceRecordId": "rec-4",
-        "data": {"good": "ok"},
+        repaired_key: "outer-value",
+        "data": {
+            "good": "ok",
+            repaired_key: "inner-value",
+        },
     }
     json.dumps(cleaned).encode("utf-8")
 
 
-def test_sanitize_record_utf8_drops_lookupkey_when_invalid():
-    """If the lookupKey itself is malformed, the field is dropped — the
-    existing 'no lookupKey' guard then skips the record at request time."""
+def test_sanitize_record_utf8_repairs_lookupkey_with_lone_surrogate():
+    """A malformed lookupKey is now repaired instead of dropped. The record
+    no longer falls through the no-lookupKey skip path; CBX1 sees a string
+    with a replacement char and can match or reject as appropriate."""
     record = {
         "sourceRecordId": "rec-3",
         "lookupKey": "bad-\udce9-domain.com",
         "domain": "bad-\udce9-domain.com",
     }
     cleaned = sanitize_record_utf8(record, "accounts", logging.getLogger("test"))
-    assert "lookupKey" not in cleaned
-    assert "domain" not in cleaned
+    assert cleaned["lookupKey"] == "bad-�-domain.com"
+    assert cleaned["domain"] == "bad-�-domain.com"
     assert cleaned["sourceRecordId"] == "rec-3"

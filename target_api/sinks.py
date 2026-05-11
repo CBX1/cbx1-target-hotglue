@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, List
+from typing import Any, List, Tuple
 
+import ftfy
 from target_hotglue.client import HotglueBatchSink, HotglueSink
 
 from target_api.client import ApiSink
@@ -16,42 +17,65 @@ import hashlib
 _DROP = object()
 
 
-def _scrub_utf8(value: Any, path: str, dropped: List[str]) -> Any:
-    """Recursively replace non-UTF-8 strings with the _DROP sentinel.
+def _repair_string(value: str) -> Tuple[str, bool]:
+    """Run ftfy.fix_text on a string. Returns (fixed, changed)."""
+    fixed = ftfy.fix_text(value)
+    return fixed, fixed != value
 
-    A string fails the check when it contains lone surrogates (e.g. data
-    decoded with errors='surrogateescape') and cannot be encoded as UTF-8.
-    Containers are kept; only the offending leaf is dropped.
+
+def _scrub_utf8(
+    value: Any,
+    path: str,
+    dropped: List[str],
+    repaired: List[str],
+) -> Any:
+    """Repair mojibake/lone-surrogate strings with ftfy, then drop any that
+    still cannot be UTF-8 encoded.
+
+    Mojibake (e.g. "Ã©" instead of "é") is valid UTF-8 but semantically
+    wrong; ftfy repairs it. Lone surrogates from errors='surrogateescape'
+    decoding fail .encode("utf-8") outright; ftfy.fix_text re-interprets the
+    surrogate bytes when possible. Anything still unencodable after repair
+    is dropped at the leaf — siblings survive.
     """
     if isinstance(value, str):
+        fixed, changed = _repair_string(value)
+        if changed:
+            repaired.append(path or "<root>")
         try:
-            value.encode("utf-8")
+            fixed.encode("utf-8")
         except UnicodeEncodeError:
             dropped.append(path or "<root>")
             return _DROP
-        return value
+        return fixed
     if isinstance(value, dict):
         cleaned: dict = {}
         for k, v in value.items():
+            fixed_k = k
             if isinstance(k, str):
+                fixed_k, changed = _repair_string(k)
+                if changed:
+                    repaired.append(
+                        f"{path}.<key>" if path else "<key>"
+                    )
                 try:
-                    k.encode("utf-8")
+                    fixed_k.encode("utf-8")
                 except UnicodeEncodeError:
                     # Mask the bad key in the path — the raw key cannot be
                     # safely formatted into log handlers.
                     dropped.append(f"{path}.<bad-key>" if path else "<bad-key>")
                     continue
-            child = f"{path}.{k}" if path else str(k)
-            new_v = _scrub_utf8(v, child, dropped)
+            child = f"{path}.{fixed_k}" if path else str(fixed_k)
+            new_v = _scrub_utf8(v, child, dropped, repaired)
             if new_v is _DROP:
                 continue
-            cleaned[k] = new_v
+            cleaned[fixed_k] = new_v
         return cleaned
     if isinstance(value, list):
         cleaned_list: list = []
         for i, v in enumerate(value):
             child = f"{path}[{i}]"
-            new_v = _scrub_utf8(v, child, dropped)
+            new_v = _scrub_utf8(v, child, dropped, repaired)
             if new_v is _DROP:
                 continue
             cleaned_list.append(new_v)
@@ -64,12 +88,22 @@ def sanitize_record_utf8(
     stream_name: str,
     logger: logging.Logger,
 ) -> dict:
-    """Drop fields whose string values are not valid UTF-8. Logs each drop."""
+    """Repair mojibake/lone-surrogate strings via ftfy, then drop anything
+    still unencodable as UTF-8. Logs repairs and drops separately."""
     dropped: List[str] = []
-    cleaned = _scrub_utf8(record, "", dropped)
+    repaired: List[str] = []
+    cleaned = _scrub_utf8(record, "", dropped, repaired)
+    if repaired:
+        logger.warning(
+            "Repaired %d mojibake/non-UTF-8 field(s) in %s record (sourceRecordId=%s): %s",
+            len(repaired),
+            stream_name,
+            record.get("sourceRecordId"),
+            ", ".join(repaired),
+        )
     if dropped:
         logger.warning(
-            "Dropped %d non-UTF-8 field(s) from %s record (sourceRecordId=%s): %s",
+            "Dropped %d non-UTF-8 field(s) from %s record (sourceRecordId=%s) after repair attempt: %s",
             len(dropped),
             stream_name,
             record.get("sourceRecordId"),
