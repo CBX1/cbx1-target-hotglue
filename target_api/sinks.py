@@ -179,10 +179,10 @@ class BatchSink(ApiSink, HotglueBatchSink):
     @property
     def max_size(self):
         if self.config.get("process_as_batch"):
-            batch_size = self.config.get("batch_size", 10)
+            batch_size = self.config.get("batch_size", 50)
             if batch_size:
                 return int(batch_size)
-        return 10
+        return 50
 
     def process_batch_record(self, record: dict, index: int) -> dict:
         record = sanitize_record_utf8(record, self.stream_name, self.logger)

@@ -31,7 +31,7 @@ CBX1 Bulk Upsert API (/api/t/v1/targets/{stream}/bulk)
 | Batch | `BatchSink` | `/bulk` | Yes (`process_as_batch: true`) |
 | Single | `RecordSink` | `/upsert` | No |
 
-**Batch size:** 20 records (configurable via `batch_size`)
+**Batch size:** 50 records (configurable via `batch_size`)
 
 ## Key Patterns
 
@@ -93,7 +93,7 @@ Each record in state includes:
 | Config | Description | Default |
 |--------|-------------|---------|
 | `process_as_batch` | Use batch processing | `true` |
-| `batch_size` | Records per batch | `20` |
+| `batch_size` | Records per batch | `50` |
 | `add_stream_key` | Add stream name to records | `false` |
 | `metadata` | Additional metadata to inject | `null` |
 | `inject_batch_ids` | Add batch tracking IDs | `false` |
