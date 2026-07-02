@@ -120,7 +120,7 @@ process_batch(context)                          # orchestrate: chunk, post, upda
 
 ### UTF-8 sanitization
 
-Every record passes through `sanitize_record_utf8` before send: `ftfy` repairs mojibake ("Ã©" → "é") and lone surrogates; any leaf still unencodable as UTF-8 after repair is **dropped at the leaf** (siblings survive), with repairs and drops logged separately including `sourceRecordId`. A record whose `lookupKey` gets dropped this way is then skipped by the lookupKey guard.
+Every record passes through `sanitize_record_utf8` before send: `ftfy` repairs mojibake ("Ã©" → "é") and lone surrogates (typically to U+FFFD, **preserving the field**); only a leaf still unencodable as UTF-8 *after* repair — a rare case — is **dropped at the leaf** (siblings survive). Repairs and drops are logged separately, including `sourceRecordId`. In the rare event a `lookupKey` is dropped rather than repaired, the record is then skipped by the lookupKey guard.
 
 ### Sequential drain
 
@@ -154,7 +154,7 @@ The target prints its final STATE (per-record success/failure map) to stdout —
 
 1. **stderr logs**: `Making bulk request: <stream> with N records`, then `Batch complete: X/Y succeeded`.
 2. **Skipped records**: count `Skipping … without lookupKey` warnings — the most common "records silently missing" cause.
-3. **stdout state**: per-record `{success, id, externalId, lookupKey, error?}` — `externalId` is what the HotGlue UI displays; `id` is the CBX1 entity UUID.
+3. **stdout state**: in batch mode (the default), per-record `{success, id, externalId, lookupKey, error?}` — `externalId` is what the HotGlue UI displays; `id` is the CBX1 entity UUID. In single-record mode (`process_as_batch: false`), the state carries only `{externalId, lookupKey}` (success/id are handled separately by the SDK).
 4. **On HTTP errors** the logs contain a **masked replayable cURL** — rerun it by hand against QA to isolate target-vs-backend.
 
 ## Tests
