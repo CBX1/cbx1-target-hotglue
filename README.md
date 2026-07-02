@@ -160,8 +160,10 @@ The target prints its final STATE (per-record success/failure map) to stdout —
 ## Tests
 
 ```bash
-poetry run pytest        # or: tox (py37–311)
+poetry run pytest        # or: tox
 ```
+
+CI (GitHub Actions) runs the suite on every push across Python 3.9–3.11 (3.7/3.8 are EOL and unavailable on current runner images; `tox.ini` still lists them for local use on older interpreters).
 
 Covers batch draining, sequential drain, and the UTF-8 sanitization matrix (mojibake repair, lone-surrogate drop, bad keys).
 
