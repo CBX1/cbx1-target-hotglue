@@ -163,7 +163,7 @@ The target prints its final STATE (per-record success/failure map) to stdout —
 poetry run pytest        # or: tox
 ```
 
-CI (GitHub Actions) runs the suite on every push across Python 3.9–3.11 (3.7/3.8 are EOL and unavailable on current runner images; `tox.ini` still lists them for local use on older interpreters).
+CI (GitHub Actions) runs the suite on every push on Python 3.9 and 3.10 — the intersection of pyproject's `python = "<3.11,>=3.7.1"` constraint and what current runner images provide (3.7/3.8 are EOL; `tox.ini` still lists the older envs for local use).
 
 Covers batch draining, sequential drain, and the UTF-8 sanitization matrix (mojibake repair, lone-surrogate drop, bad keys).
 
