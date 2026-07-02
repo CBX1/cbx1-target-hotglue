@@ -132,10 +132,15 @@ Every record passes through `sanitize_record_utf8` before send: `ftfy` repairs m
 
 ## Running locally
 
+The target reads Singer messages on **stdin** and writes final state to **stdout**:
+
 ```bash
 poetry install
-cat input.singer | poetry run target-cbx1 --config config.json
+set -a; source .env; set +a
+cat input.singer | poetry run target-cbx1 --config config.json > state_out.json
 ```
+
+⚠️ The target performs **real writes** — point `config.json` at a **QA tenant**; never run a local experiment against prod credentials.
 
 Where to get `input.singer`:
 
@@ -144,6 +149,13 @@ Where to get `input.singer`:
 - **Hand-crafted minimal fixture:** one SCHEMA + a few RECORD lines with `lookupKey`/`sourceRecordId` — see `tests/test_core.py` for realistic record shapes.
 
 The target prints its final STATE (per-record success/failure map) to stdout — that's what HotGlue surfaces in its UI.
+
+### Verifying a run
+
+1. **stderr logs**: `Making bulk request: <stream> with N records`, then `Batch complete: X/Y succeeded`.
+2. **Skipped records**: count `Skipping … without lookupKey` warnings — the most common "records silently missing" cause.
+3. **stdout state**: per-record `{success, id, externalId, lookupKey, error?}` — `externalId` is what the HotGlue UI displays; `id` is the CBX1 entity UUID.
+4. **On HTTP errors** the logs contain a **masked replayable cURL** — rerun it by hand against QA to isolate target-vs-backend.
 
 ## Tests
 
@@ -166,6 +178,16 @@ Covers batch draining, sequential drain, and the UTF-8 sanitization matrix (moji
 | 4xx/5xx from the API | Logs include a masked, replayable cURL — rerun it by hand against QA. 5xx retries twice; 4xx is fatal. |
 | Weird characters / encode errors | Look for the sanitizer warnings (repaired vs dropped field paths, with `sourceRecordId`). |
 | Order-sensitive failures | Try `enforce_order: true` (parallelism 1) to rule out interleaving. |
+
+Quick first checks for the three highest-frequency issues:
+
+| Quick check | Rules out |
+|---|---|
+| `grep -c 'without lookupKey'` on stderr | records dropped before the API |
+| Per-record `status`/`error` in `data.results` (correlate by `lookupKey`, never index) | backend-side validation failures |
+| Sanitizer warnings (`Repaired`/`Dropped … field(s)`) | encoding mutations you didn't expect |
+
+To isolate a single record: set `process_as_batch: false` (RecordSink, one API call per record) or `batch_size: 1`.
 
 ## Conventions
 
