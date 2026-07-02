@@ -15,7 +15,7 @@ plugins:
     - stream-maps
     - record-flattening
     settings:
-    # Config truth lives in AGENTS.md + config.json; keep this list in sync.
+    # Config truth lives in README.md + config.json; keep this list in sync.
     - name: Code
       kind: password
     - name: OrgId

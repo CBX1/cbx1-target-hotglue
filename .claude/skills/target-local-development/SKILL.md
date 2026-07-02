@@ -5,7 +5,7 @@ description: Run, test, and debug target-cbx1 locally — fixture-driven runs, p
 
 # target-cbx1 Local Development
 
-Authoritative reference: `AGENTS.md` at the repo root (config, endpoints, response shape, record contract, debugging playbook). This skill is the operational workflow.
+Authoritative reference: `README.md` at the repo root (config, endpoints, response shape, record contract, debugging playbook). This skill is the operational workflow.
 
 ## Setup (once)
 
@@ -14,7 +14,7 @@ poetry install
 cp .env.example .env    # fill in BASE_URL (+ CONNECTOR_ID)
 ```
 
-Create `config.json` with `Code`, `OrgId` (+ optional `process_as_batch`, `batch_size` — full table in `AGENTS.md`). Point it at a **QA tenant** — the target performs real writes; never run a local experiment against prod credentials. `config.json` is gitignored (a run writes the JWT back into it).
+Create `config.json` with `Code`, `OrgId` (+ optional `process_as_batch`, `batch_size` — full table in `README.md`). Point it at a **QA tenant** — the target performs real writes; never run a local experiment against prod credentials. `config.json` is gitignored (a run writes the JWT back into it).
 
 ## Run
 
@@ -48,7 +48,7 @@ poetry run pytest        # or: tox
 
 ## Debug
 
-Work the symptom table in `AGENTS.md` → "Debugging playbook". The three highest-frequency issues:
+Work the symptom table in `README.md` → "Debugging playbook". The three highest-frequency issues:
 
 | Quick check | Rules out |
 |---|---|
