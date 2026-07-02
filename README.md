@@ -1,140 +1,57 @@
-# target-api
+# target-cbx1
 
-`target-api` is a Singer target for Api.
+Singer **target** that receives CRM records (accounts, contacts) from HotGlue taps and writes them to the CBX1 platform's integration records API. Built with the Meltano Singer SDK + `target-hotglue`. Runs inside HotGlue as the write side of the CRM → CBX1 sync pipeline.
 
-Build with the [Meltano Target SDK](https://sdk.meltano.com).
+> **Agents / detailed reference:** see [`AGENTS.md`](AGENTS.md) for architecture, endpoints, batch semantics, and debugging guidance.
 
-<!--
-
-Developer TODO: Update the below as needed to correctly describe the install procedure. For instance, if you do not have a PyPi repo, or if you want users to directly install from your git repo, you can modify this step as appropriate.
-
-## Installation
-
-Install from PyPi:
+## Quickstart
 
 ```bash
-pipx install target-api
-```
-
-Install from GitHub:
-
-```bash
-pipx install git+https://github.com/ORG_NAME/target-api.git@main
-```
-
--->
-
-## Configuration
-
-### Accepted Config Options
-
-<!--
-Developer TODO: Provide a list of config options accepted by the target.
-
-This section can be created by copy-pasting the CLI output from:
-
-```
-target-api --about --format=markdown
-```
--->
-
-A full list of supported settings and capabilities for this
-target is available by running:
-
-```bash
-target-api --about
-```
-
-### Configure using environment variables
-
-This Singer target will automatically import any environment variables within the working directory's
-`.env` if the `--config=ENV` is provided, such that config values will be considered if a matching
-environment variable is set either in the terminal context or in the `.env` file.
-
-### Source Authentication and Authorization
-
-<!--
-Developer TODO: If your target requires special access on the destination system, or any special authentication requirements, provide those here.
--->
-
-#### JWT Authentication
-
-This target supports JWT token-based authentication for APIs that require it. The connector will:
-
-1. Make an API call to get a JWT token using an access key
-2. Add the JWT token to subsequent API calls 
-3. Automatically handle token expiry and renewal
-
-## Usage
-
-You can easily run `target-api` by itself or in a pipeline using [Meltano](https://meltano.com/).
-
-### Executing the Target Directly
-
-```bash
-target-api --version
-target-api --help
-# Test using the "Carbon Intensity" sample:
-tap-carbon-intensity | target-api --config /path/to/target-api-config.json
-```
-
-## Developer Resources
-
-Follow these instructions to contribute to this project.
-
-### Initialize your Development Environment
-
-```bash
-pipx install poetry
 poetry install
 ```
 
-### Create and Run Tests
+Create a `config.json`:
 
-Create tests within the `tests` subfolder and
-  then run:
-
-```bash
-poetry run pytest
+```json
+{
+    "Code": "<access key code from CBX1 IDM>",
+    "OrgId": "<tenant organization id>",
+    "process_as_batch": true,
+    "batch_size": 50
+}
 ```
 
-You can also test the `target-api` CLI interface directly using `poetry run`:
+Set environment variables (see `.env.example`):
 
 ```bash
-poetry run target-api --help
+export BASE_URL="http://java-backend.api.qa.cbx1.internal/"   # trailing slash required
+export CONNECTOR_ID="HUBSPOT"                                 # SALESFORCE | HUBSPOT | MARKETO
 ```
 
-### Testing with [Meltano](https://meltano.com/)
-
-_**Note:** This target will work in any Singer environment and does not require Meltano.
-Examples here are for convenience and to streamline end-to-end orchestration scenarios._
-
-<!--
-Developer TODO:
-Your project comes with a custom `meltano.yml` project file already created. Open the `meltano.yml` and follow any "TODO" items listed in
-the file.
--->
-
-Next, install Meltano (if you haven't already) and any needed plugins:
+Run against a Singer input stream:
 
 ```bash
-# Install meltano
-pipx install meltano
-# Initialize meltano within this directory
-cd target-api
-meltano install
+# From a saved fixture (e.g. etl-output/data.singer from hotglue-transformation-scripts)
+cat input.singer | poetry run target-cbx1 --config config.json
+
+# Or pipe a live tap
+tap-hubspot --config tap_config.json --catalog catalog.json | poetry run target-cbx1 --config config.json
 ```
 
-Now you can test and orchestrate using Meltano:
+## Tests
 
 ```bash
-# Test invocation:
-meltano invoke target-api --version
-# OR run a test `elt` pipeline with the Carbon Intensity sample tap:
-meltano run tap-carbon-intensity target-api
+poetry run pytest        # or: tox
 ```
 
-### SDK Dev Guide
+## Branches
 
-See the [dev guide](https://sdk.meltano.com/en/latest/dev_guide.html) for more instructions on how to use the Meltano Singer SDK to
-develop your own Singer taps and targets.
+| Branch | Purpose |
+|---|---|
+| `main` | Development |
+| `production` | Production deployment |
+
+## Related repos
+
+- [`cbx1-tap-hotglue`](https://github.com/CBX1/cbx1-tap-hotglue) — Singer tap (read side)
+- [`hotglue-transformation-scripts`](https://github.com/CBX1/hotglue-transformation-scripts) — ETL between tap and target; contains the end-to-end architecture doc

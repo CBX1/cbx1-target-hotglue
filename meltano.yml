@@ -14,12 +14,28 @@ plugins:
     - about
     - stream-maps
     - record-flattening
-    config:
-      start_date: '2010-01-01T00:00:00Z'
     settings:
-    # TODO: To configure using Meltano, declare settings and their types here:
-    - name: username
-    - name: password
+    # Config truth lives in AGENTS.md + config.json; keep this list in sync.
+    - name: Code
       kind: password
-    - name: start_date
-      value: '2010-01-01T00:00:00Z'
+    - name: OrgId
+    - name: process_as_batch
+      kind: boolean
+      value: true
+    - name: batch_size
+      kind: integer
+      value: 50
+    - name: max_size_in_bytes
+      kind: integer
+    - name: enforce_order
+      kind: boolean
+    - name: add_stream_key
+      kind: boolean
+      value: false
+    - name: metadata
+    - name: inject_batch_ids
+      kind: boolean
+      value: false
+    - name: post_empty_record
+      kind: boolean
+      value: false

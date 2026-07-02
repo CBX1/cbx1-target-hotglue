@@ -1,131 +1,154 @@
-# CBX1 Target HotGlue
+# target-cbx1 — Agent Guide
 
-HotGlue Singer target for syncing CRM data (accounts, contacts) to the CBX1 platform.
-
-## Project Overview
-
-This is a Singer target built with the Meltano Singer SDK. It receives data from HotGlue taps (Salesforce, HubSpot, etc.) and writes to the CBX1 bulk upsert API.
-
-**Key Components:**
-- `target_api/target.py` - Main target class (`TargetApi`)
-- `target_api/sinks.py` - Sink classes for data processing (`RecordSink`, `BatchSink`)
-- `target_api/client.py` - Base API client (`ApiSink`)
-- `target_api/auth.py` - Authentication handling
-
-## Architecture
+Singer **target** (destination connector) for syncing CRM data (accounts, contacts) into the CBX1 platform. Built on the Meltano Singer SDK + HotGlue's `target-hotglue` base classes. It is the write side of the HotGlue CRM → CBX1 sync:
 
 ```
-HotGlue Tap (Salesforce/HubSpot)
-    ↓ Singer messages (RECORD, STATE, SCHEMA)
-TargetApi (target.py)
-    ↓ Routes to appropriate sink
-BatchSink / RecordSink (sinks.py)
-    ↓ API calls
-CBX1 Bulk Upsert API (/api/t/v1/targets/{stream}/bulk)
+CRM tap (Salesforce/HubSpot/Marketo)
+    → hotglue-transformation-scripts (etl.py)   # maps CRM fields → CBX1 shape
+        → target-cbx1 (this repo)
+            → CBX1 integration records API
 ```
 
-## Processing Modes
+End-to-end pipeline documentation lives in the `hotglue-transformation-scripts` repo (`docs/architecture.md`).
 
-| Mode | Sink | Endpoint | Default |
-|------|------|----------|---------|
-| Batch | `BatchSink` | `/bulk` | Yes (`process_as_batch: true`) |
-| Single | `RecordSink` | `/upsert` | No |
+## Layout
 
-**Batch size:** 50 records (configurable via `batch_size`)
+| Path | Role |
+|---|---|
+| `target_api/target.py` | `TargetApi` — CLI entry point, sink selection, sequential drain + state assembly |
+| `target_api/sinks.py` | `RecordSink` (single) / `BatchSink` (default) + UTF-8 sanitization (`ftfy`) |
+| `target_api/client.py` | `ApiSink` — endpoint construction, auth headers, retry/validation, cURL-on-error |
+| `target_api/auth.py` | `Cbx1Authenticator` — access-key → JWT session token against CBX1 IDM |
+| `target_api/constants.py` | Config key names |
+| `tests/test_core.py` | pytest: batch draining, sequential drain, UTF-8/mojibake/lone-surrogate sanitization |
 
-## Key Patterns
+CLI entry point (pyproject): `target-cbx1 = 'target_api.target:TargetApi.cli'` (package name `target-api`).
 
-### External ID Mapping
+## Config (`config.json`)
 
-CRM sync requires mapping between CRM IDs and internal IDs:
-
-```python
-# Input field (from ETL): crmAssociationId
-# Output field (for HotGlue UI): externalId
-# Lookup field: domain (accounts) or email (contacts)
+```json
+{
+    "Code": "…",
+    "OrgId": "…",
+    "process_as_batch": true,
+    "batch_size": 50
+}
 ```
 
-### Bulk API Response Structure
+| Config | Description | Default |
+|---|---|---|
+| `Code` / `OrgId` | Access-key credentials for CBX1 IDM (same auth flow as the tap). The JWT session token and `expires_in` are **written back into the config file** (`AccessToken` key) — never commit a used `config.json`. | required |
+| `process_as_batch` | Use `BatchSink` (bulk request per batch) instead of `RecordSink` | `true` |
+| `batch_size` | Records per bulk request | `50` |
+| `max_size_in_bytes` | Also flush a batch when its JSON size approaches this many bytes | unset |
+| `enforce_order` | Force `MAX_PARALLELISM = 1` (otherwise 10) | unset |
+| `add_stream_key` | Add `stream` field to each record | `false` |
+| `metadata` | Extra metadata object (or JSON string) merged into each record's `metadata` | unset |
+| `inject_batch_ids` | Add `hgBatchId` (md5 of `JOB_ROOT:stream:index`) to each record + state, for batch tracking | `false` |
+| `post_empty_record` | Post an empty record for streams that had schema but no records | `false` |
+| `custom_headers` | List of `{name, value}` extra HTTP headers | unset |
+
+## Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `BASE_URL` | yes | CBX1 Java backend base URL, **with trailing slash**. e.g. `http://java-backend.api.qa.cbx1.internal/` |
+| `CONNECTOR_ID` | no (default `HUBSPOT`) | Fallback CRM source when a record has no `source` field. One of `SALESFORCE`, `HUBSPOT`, `MARKETO`. Determines the endpoint path. |
+| `JOB_ROOT` | no | HotGlue job identifier; used in `hgBatchId` generation when `inject_batch_ids` is on. |
+
+Copy `.env.example` to `.env` for local runs.
+
+## API surface
+
+- Auth: `GET {BASE_URL}api/g/v1/auth/tokens?authenticationType=ACCESS_KEY&code=…&orgId=…` → `data.sessionToken` (Bearer) — plus `x-organisation-id: {OrgId}` header on every request.
+- Ingestion (single **and** bulk — same endpoint): `POST {BASE_URL}api/t/v1/targets/integrations/{SOURCE}/{OBJECT_TYPE}/records` with payload `{"records": […]}`, where `SOURCE` comes from the record's `source` field or `CONNECTOR_ID`, and `OBJECT_TYPE` is derived from the stream name (`account|company|companies` → `ACCOUNT`; `contact|lead` → `CONTACT`).
+
+### Response shape (`GenericResponse<RecordIngestionResponse>`)
 
 ```json
 {
   "status": { "code": "CM000", "message": "Success" },
   "data": {
-    "totalProcessed": 2,
-    "successful": 2,
-    "failed": 0,
+    "totalProcessed": 2, "successful": 1, "failed": 1,
     "results": [
-      { "success": true, "id": "uuid", "lookupKey": "example.com" },
-      { "success": false, "id": null, "lookupKey": "bad.com", "error": "..." }
+      { "status": "SUCCESS", "entityId": "uuid", "lookupKey": "example.com" },
+      { "status": "FAILED",  "entityId": null,  "lookupKey": "bad.com", "error": "…" }
     ]
   }
 }
 ```
 
-### Batch Processing Pattern
+Per-record `status` is an enum: `SUCCESS`, `FAILED`, or `SKIPPED`. Results live at `response["data"]["results"]` — CBX1 wraps everything in `{status, data}`.
 
-The `BatchSink` follows the HotGlue-recommended three-function pattern:
+## Key patterns
+
+### Record contract (what the ETL must produce)
+
+- `lookupKey` — **required**; domain (accounts) or email (contacts). Records without it are skipped with a warning, never sent.
+- `sourceRecordId` — the CRM-side record id; becomes `externalId` in state (what the HotGlue UI shows).
+- `source` — optional per-record CRM source override (`SALESFORCE`/`HUBSPOT`/`MARKETO`).
+
+### Batch processing (three-function pattern, `BatchSink`)
 
 ```python
-# 1. Post batch to API, return full response
-def make_batch_request(self, records: List[dict]) -> dict
-
-# 2. Parse response, build per-record state with externalId mapping
-def handle_batch_response(self, response: dict, raw_records: List[dict]) -> dict
-
-# 3. Orchestrate batch, call update_state() per record
-def process_batch(self, context: dict) -> None
+make_batch_request(records)                     # POST the batch, return parsed JSON
+handle_batch_response(response, raw_records, batch_external_id)  # build per-record state
+process_batch(context)                          # orchestrate: chunk, post, update_state()
 ```
 
-**Correlation strategy**: Use `lookupKey` (domain/email) to map `crmAssociationId` to internal IDs rather than relying on array order.
+**Correlation strategy:** per-record results are matched back to inputs by `lookupKey` (never array order). State per record: `success` (bool, from the status enum), `id` (`entityId` as string), `externalId` (from `sourceRecordId`), `lookupKey`, `error` (failures only), `hgBatchId` (when injected). A failed batch request produces a `{"error": …, "batch_failed": true}` state entry.
 
-### State Output
+### UTF-8 sanitization
 
-Each record in state includes:
-- `success` - Boolean success status
-- `id` - Internal CBX1 UUID (null if failed)
-- `externalId` - CRM record ID (from `crmAssociationId`)
-- `lookupKey` - Domain or email used for correlation
-- `error` - Error message (only for failures)
+Every record passes through `sanitize_record_utf8` before send: `ftfy` repairs mojibake ("Ã©" → "é") and lone surrogates; any leaf still unencodable as UTF-8 after repair is **dropped at the leaf** (siblings survive), with repairs and drops logged separately including `sourceRecordId`. A record whose `lookupKey` gets dropped this way is then skipped by the lookupKey guard.
 
-## Configuration
+### Sequential drain
 
-| Config | Description | Default |
-|--------|-------------|---------|
-| `process_as_batch` | Use batch processing | `true` |
-| `batch_size` | Records per batch | `50` |
-| `add_stream_key` | Add stream name to records | `false` |
-| `metadata` | Additional metadata to inject | `null` |
-| `inject_batch_ids` | Add batch tracking IDs | `false` |
+`drain_all` drains sinks one at a time (`_drain_all(…, 1)`) so final partial batches cannot race, and final state is assembled from each `BatchSink`'s `latest_state`.
 
-## Development
+### Error handling / retries
+
+`validate_response`: 429 and 5xx → `RetriableAPIError` (backoff, max 2 tries); 4xx → `FatalAPIError`. Both log a **replayable cURL command** with `Authorization`/`x-organisation-id` masked — grab it from the logs to reproduce a failure by hand.
+
+## Running locally
 
 ```bash
-# Install dependencies
 poetry install
-
-# Run tests
-poetry run pytest
-
-# Run target locally
-poetry run target-cbx1 --config config.json
+cat input.singer | poetry run target-cbx1 --config config.json
 ```
 
-## Branches
+Where to get `input.singer`:
 
-| Branch | Purpose |
-|--------|---------|
-| `main` | Development |
-| `production` | Production deployment |
+- **Real shape (recommended):** `etl-output/data.singer` from a `hotglue-transformation-scripts` write-job run (see that repo's `local-job-debugging` skill) — this is exactly what the target receives in production.
+- **From the sibling tap** (CBX1-shaped, useful for plumbing checks): `cbx1-tap-hotglue` sync output.
+- **Hand-crafted minimal fixture:** one SCHEMA + a few RECORD lines with `lookupKey`/`sourceRecordId` — see `tests/test_core.py` for realistic record shapes.
 
-## Related Repositories
+The target prints its final STATE (per-record success/failure map) to stdout — that's what HotGlue surfaces in its UI.
 
-- `hotglue-transformation-scripts/` - ETL scripts that transform CRM data before this target
-- Backend bulk API: `POST /api/t/v1/targets/accounts/bulk`, `POST /api/t/v1/targets/contacts/bulk`
+## Tests
 
-## Common Issues
+```bash
+poetry run pytest        # or: tox (py37–311)
+```
 
-1. **External ID not showing in HotGlue UI**: Ensure state outputs `externalId` field (not `crmAssociationId`)
-2. **Domain/email required errors**: Records without lookup key fail validation
-3. **Batch failures**: Check `data.results` for per-record error messages
-4. **Response parsing errors**: Results are in `response["data"]["results"]`, not `response["results"]` - CBX1 API wraps responses in `{ status: {...}, data: {...} }`
+Covers batch draining, sequential drain, and the UTF-8 sanitization matrix (mojibake repair, lone-surrogate drop, bad keys).
+
+## Debugging playbook
+
+| Symptom | Likely cause / where to look |
+|---|---|
+| `Failed OAuth login` at startup | Bad `Code`/`OrgId` or `BASE_URL` unset/missing trailing slash (`auth.py` concatenates). |
+| `Invalid CONNECTOR_ID` ValueError | `CONNECTOR_ID` env not one of SALESFORCE/HUBSPOT/MARKETO. |
+| `Unsupported stream type` ValueError | Stream name doesn't contain account/company/contact/lead — check what the ETL named the stream. |
+| Records silently not written | Missing `lookupKey` (skip is logged: "Skipping N record(s) without lookupKey"). Count the warnings. |
+| externalId missing in HotGlue UI | State must carry `externalId` (mapped from `sourceRecordId`), not `crmAssociationId` — check `handle_batch_response`. |
+| Partial batch failures | Per-record `error` in `data.results`; correlate by `lookupKey`. |
+| 4xx/5xx from the API | Logs include a masked, replayable cURL — rerun it by hand against QA. 5xx retries twice; 4xx is fatal. |
+| Weird characters / encode errors | Look for the sanitizer warnings (repaired vs dropped field paths, with `sourceRecordId`). |
+| Order-sensitive failures | Try `enforce_order: true` (parallelism 1) to rule out interleaving. |
+
+## Conventions
+
+- `meltano.yml` exists for SDK plumbing only; config truth is this file + `config.json`. Don't add settings there without updating here.
+- Response parsing must always go through `response["data"]` — never assume a flat body.
+- Never correlate batch results by array index; always `lookupKey`.
