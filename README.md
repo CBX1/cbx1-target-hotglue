@@ -81,7 +81,19 @@ Copy `.env.example` to `.env` for local runs.
 ## API surface
 
 - Auth: `GET {BASE_URL}api/g/v1/auth/tokens?authenticationType=ACCESS_KEY&code=…&orgId=…` → `data.sessionToken` (Bearer) — plus `x-organisation-id: {OrgId}` header on every request.
-- Ingestion (single **and** bulk — same endpoint): `POST {BASE_URL}api/t/v1/targets/integrations/{SOURCE}/{OBJECT_TYPE}/records` with payload `{"records": […]}`, where `SOURCE` comes from the record's `source` field or `CONNECTOR_ID`, and `OBJECT_TYPE` is derived from the stream name (`account|company|companies` → `ACCOUNT`; `contact|lead` → `CONTACT`).
+- Ingestion (single **and** bulk — same endpoint): `POST {BASE_URL}api/t/v1/targets/integrations/{SOURCE}/{OBJECT_TYPE}/records` with payload `{"records": […]}`, where `SOURCE` comes from the record's `source` field or `CONNECTOR_ID`, and `OBJECT_TYPE` is derived from the stream name.
+
+Stream → `OBJECT_TYPE` resolution happens in two steps, **exact name first**:
+
+| Stream | `OBJECT_TYPE` | `lookupKey` field |
+|---|---|---|
+| `deals` | `DEAL` | `id` |
+| `deal_company_links` | `DEAL_COMPANY_LINK` | `lookupKey` |
+| `deal_contact_links` | `DEAL_CONTACT_LINK` | `lookupKey` |
+| *contains* `account` / `company` / `companies` | `ACCOUNT` | `domain` |
+| *contains* `contact` / `lead` | `CONTACT` | `email` |
+
+⚠️ The exact-name table **must** be consulted before the substring fallback: `deal_company_links` contains `company` and `deal_contact_links` contains `contact`, so substring matching alone would route both link streams onto the ACCOUNT/CONTACT ingestion endpoints and silently upsert edge records into `AccountV2`/`ContactV2`. `tests/test_core.py` guards this.
 
 ### Response shape (`GenericResponse<RecordIngestionResponse>`)
 
