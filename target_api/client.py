@@ -22,14 +22,15 @@ class ApiSink(HotglueBaseSink):
     auth_state = {}
 
     # Exact stream name -> EntityType. Consulted BEFORE the substring matching in
-    # _get_object_type, which cannot express these streams: "deal_company_links"
-    # contains "company" and "deal_contact_links" contains "contact", so the
-    # substring branches would route both onto the ACCOUNT/CONTACT ingestion
-    # endpoints and silently upsert edge records into AccountV2/ContactV2.
+    # _get_object_type, which cannot express these streams:
+    # "associations_deals_companies" contains "companies" and
+    # "associations_deals_contacts" contains "contact", so the substring branches
+    # would route both onto the ACCOUNT/CONTACT ingestion endpoints and silently
+    # upsert edge records into AccountV2/ContactV2.
     STREAM_OBJECT_TYPES = {
         "deals": "DEAL",
-        "deal_company_links": "DEAL_COMPANY_LINK",
-        "deal_contact_links": "DEAL_CONTACT_LINK",
+        "associations_deals_companies": "DEAL_COMPANY_LINK",
+        "associations_deals_contacts": "DEAL_CONTACT_LINK",
     }
 
     # Exact stream name -> the field the backend upserts on. Deals key on the
@@ -37,8 +38,8 @@ class ApiSink(HotglueBaseSink):
     # the ETL builds, since an edge has no object id of its own.
     STREAM_LOOKUP_FIELDS = {
         "deals": "id",
-        "deal_company_links": "lookupKey",
-        "deal_contact_links": "lookupKey",
+        "associations_deals_companies": "lookupKey",
+        "associations_deals_contacts": "lookupKey",
     }
 
     @property
