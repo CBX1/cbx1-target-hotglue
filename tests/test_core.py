@@ -289,8 +289,8 @@ def _sink_with_stream(stream_name: str) -> ApiSink:
     ("stream", "object_type", "lookup_field"),
     [
         ("deals", "DEAL", "id"),
-        ("deal_company_links", "DEAL_COMPANY_LINK", "lookupKey"),
-        ("deal_contact_links", "DEAL_CONTACT_LINK", "lookupKey"),
+        ("associations_deals_companies", "DEAL_COMPANY_LINK", "lookupKey"),
+        ("associations_deals_contacts", "DEAL_CONTACT_LINK", "lookupKey"),
     ],
 )
 def test_deal_streams_route_to_deal_object_types(stream, object_type, lookup_field):
@@ -300,11 +300,11 @@ def test_deal_streams_route_to_deal_object_types(stream, object_type, lookup_fie
     assert sink._get_lookup_field() == lookup_field
 
 
-@pytest.mark.parametrize("stream", ["deal_company_links", "deal_contact_links"])
+@pytest.mark.parametrize("stream", ["associations_deals_companies", "associations_deals_contacts"])
 def test_link_streams_are_not_misrouted_to_account_or_contact(stream):
     """Regression guard for the substring-matching trap.
 
-    "deal_company_links" contains "company" and "deal_contact_links" contains
+    "associations_deals_companies" contains "company" and "associations_deals_contacts" contains
     "contact", so if the exact-name table is ever removed or consulted after the
     substring branches, both streams would POST edge records to the existing
     ACCOUNT/CONTACT ingestion endpoints and silently corrupt AccountV2/ContactV2.

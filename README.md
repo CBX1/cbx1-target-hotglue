@@ -88,12 +88,12 @@ Stream → `OBJECT_TYPE` resolution happens in two steps, **exact name first**:
 | Stream | `OBJECT_TYPE` | `lookupKey` field |
 |---|---|---|
 | `deals` | `DEAL` | `id` |
-| `deal_company_links` | `DEAL_COMPANY_LINK` | `lookupKey` |
-| `deal_contact_links` | `DEAL_CONTACT_LINK` | `lookupKey` |
+| `associations_deals_companies` | `DEAL_COMPANY_LINK` | `lookupKey` |
+| `associations_deals_contacts` | `DEAL_CONTACT_LINK` | `lookupKey` |
 | *contains* `account` / `company` / `companies` | `ACCOUNT` | `domain` |
 | *contains* `contact` / `lead` | `CONTACT` | `email` |
 
-⚠️ The exact-name table **must** be consulted before the substring fallback: `deal_company_links` contains `company` and `deal_contact_links` contains `contact`, so substring matching alone would route both link streams onto the ACCOUNT/CONTACT ingestion endpoints and silently upsert edge records into `AccountV2`/`ContactV2`. `tests/test_core.py` guards this.
+⚠️ The exact-name table **must** be consulted before the substring fallback: `associations_deals_companies` contains `company` and `associations_deals_contacts` contains `contact`, so substring matching alone would route both link streams onto the ACCOUNT/CONTACT ingestion endpoints and silently upsert edge records into `AccountV2`/`ContactV2`. `tests/test_core.py` guards this.
 
 ### Response shape (`GenericResponse<RecordIngestionResponse>`)
 
