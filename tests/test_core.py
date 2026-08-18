@@ -13,6 +13,7 @@ try:
 except ImportError:
     get_target_test_class = None
 
+from target_api.client import ApiSink
 from target_api.sinks import sanitize_record_utf8
 from target_api.target import TargetApi
 
@@ -270,3 +271,65 @@ def test_sanitize_record_utf8_repairs_lookupkey_with_lone_surrogate():
     assert cleaned["lookupKey"] == "bad-�-domain.com"
     assert cleaned["domain"] == "bad-�-domain.com"
     assert cleaned["sourceRecordId"] == "rec-3"
+
+
+def _sink_with_stream(stream_name: str) -> ApiSink:
+    """Build a bare ApiSink for stream-name routing checks.
+
+    _get_object_type / _get_lookup_field read only self.stream_name, so the sink
+    is constructed without going through the SDK's __init__ (which would need a
+    target, schema and live config).
+    """
+    sink = ApiSink.__new__(ApiSink)
+    sink.stream_name = stream_name
+    return sink
+
+
+@pytest.mark.parametrize(
+    ("stream", "object_type", "lookup_field"),
+    [
+        ("deals", "DEAL", "id"),
+        ("associations_deals_companies", "DEAL_COMPANY_LINK", "lookupKey"),
+        ("associations_deals_contacts", "DEAL_CONTACT_LINK", "lookupKey"),
+    ],
+)
+def test_deal_streams_route_to_deal_object_types(stream, object_type, lookup_field):
+    """Deal streams resolve via the exact-name table, not substring matching."""
+    sink = _sink_with_stream(stream)
+    assert sink._get_object_type() == object_type
+    assert sink._get_lookup_field() == lookup_field
+
+
+@pytest.mark.parametrize("stream", ["associations_deals_companies", "associations_deals_contacts"])
+def test_link_streams_are_not_misrouted_to_account_or_contact(stream):
+    """Regression guard for the substring-matching trap.
+
+    "associations_deals_companies" contains "company" and "associations_deals_contacts" contains
+    "contact", so if the exact-name table is ever removed or consulted after the
+    substring branches, both streams would POST edge records to the existing
+    ACCOUNT/CONTACT ingestion endpoints and silently corrupt AccountV2/ContactV2.
+    """
+    sink = _sink_with_stream(stream)
+    assert sink._get_object_type() not in {"ACCOUNT", "CONTACT"}
+    assert sink._get_lookup_field() not in {"domain", "email"}
+
+
+@pytest.mark.parametrize(
+    ("stream", "object_type", "lookup_field"),
+    [
+        ("accounts", "ACCOUNT", "domain"),
+        ("companies", "ACCOUNT", "domain"),
+        ("contacts", "CONTACT", "email"),
+        ("leads", "CONTACT", "email"),
+    ],
+)
+def test_existing_streams_keep_substring_routing(stream, object_type, lookup_field):
+    """The account/contact sync must be untouched by the exact-name table."""
+    sink = _sink_with_stream(stream)
+    assert sink._get_object_type() == object_type
+    assert sink._get_lookup_field() == lookup_field
+
+
+def test_unknown_stream_still_raises():
+    with pytest.raises(ValueError, match="Unsupported stream type"):
+        _sink_with_stream("invoices")._get_object_type()

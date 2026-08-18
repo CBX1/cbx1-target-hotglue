@@ -12,7 +12,10 @@ jobs:
       GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        # Bounded by pyproject's `python = "<3.11,>=3.7.1"` on the high end
+        # (poetry refuses 3.11) and by the ubuntu-latest (24.04) runner image
+        # on the low end (3.7/3.8 are EOL and no longer available).
+        python-version: ["3.9", "3.10"]
     steps:
     - uses: actions/checkout@v6
     - name: Set up Python ${{ matrix.python-version }}

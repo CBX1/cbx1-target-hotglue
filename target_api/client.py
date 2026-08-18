@@ -21,6 +21,27 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 class ApiSink(HotglueBaseSink):
     auth_state = {}
 
+    # Exact stream name -> EntityType. Consulted BEFORE the substring matching in
+    # _get_object_type, which cannot express these streams:
+    # "associations_deals_companies" contains "companies" and
+    # "associations_deals_contacts" contains "contact", so the substring branches
+    # would route both onto the ACCOUNT/CONTACT ingestion endpoints and silently
+    # upsert edge records into AccountV2/ContactV2.
+    STREAM_OBJECT_TYPES = {
+        "deals": "DEAL",
+        "associations_deals_companies": "DEAL_COMPANY_LINK",
+        "associations_deals_contacts": "DEAL_CONTACT_LINK",
+    }
+
+    # Exact stream name -> the field the backend upserts on. Deals key on the
+    # HubSpot deal id; association edges key on the "{from_id}:{to_id}" composite
+    # the ETL builds, since an edge has no object id of its own.
+    STREAM_LOOKUP_FIELDS = {
+        "deals": "id",
+        "associations_deals_companies": "lookupKey",
+        "associations_deals_contacts": "lookupKey",
+    }
+
     @property
     def name(self):
         return self.stream_name
@@ -49,6 +70,9 @@ class ApiSink(HotglueBaseSink):
     def _get_object_type(self) -> str:
         """Map stream name to EntityType."""
         stream_lower = self.stream_name.lower()
+        exact_match = self.STREAM_OBJECT_TYPES.get(stream_lower)
+        if exact_match:
+            return exact_match
         if "account" in stream_lower or "company" in stream_lower or "companies" in stream_lower:
             return "ACCOUNT"
         elif "contact" in stream_lower or "lead" in stream_lower:
@@ -77,6 +101,9 @@ class ApiSink(HotglueBaseSink):
     def _get_lookup_field(self) -> str:
         """Return the lookup field based on stream name."""
         stream_lower = self.stream_name.lower()
+        exact_match = self.STREAM_LOOKUP_FIELDS.get(stream_lower)
+        if exact_match:
+            return exact_match
         if "account" in stream_lower or "company" in stream_lower or "companies" in stream_lower:
             return "domain"
         elif "contact" in stream_lower or "lead" in stream_lower:
