@@ -31,6 +31,8 @@ class ApiSink(HotglueBaseSink):
         "deals": "DEAL",
         "associations_deals_companies": "DEAL_COMPANY_LINK",
         "associations_deals_contacts": "DEAL_CONTACT_LINK",
+        "forms": "FORM",
+        "form_submissions": "FORM_SUBMISSION",
     }
 
     # Exact stream name -> the field the backend upserts on. Deals key on the
@@ -40,6 +42,8 @@ class ApiSink(HotglueBaseSink):
         "deals": "id",
         "associations_deals_companies": "lookupKey",
         "associations_deals_contacts": "lookupKey",
+        "forms": "lookupKey",
+        "form_submissions": "lookupKey",
     }
 
     @property
