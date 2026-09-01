@@ -291,10 +291,12 @@ def _sink_with_stream(stream_name: str) -> ApiSink:
         ("deals", "DEAL", "id"),
         ("associations_deals_companies", "DEAL_COMPANY_LINK", "lookupKey"),
         ("associations_deals_contacts", "DEAL_CONTACT_LINK", "lookupKey"),
+        ("forms", "FORM", "lookupKey"),
+        ("form_submissions", "FORM_SUBMISSION", "lookupKey"),
     ],
 )
-def test_deal_streams_route_to_deal_object_types(stream, object_type, lookup_field):
-    """Deal streams resolve via the exact-name table, not substring matching."""
+def test_exact_name_streams_route_correctly(stream, object_type, lookup_field):
+    """Exact-name streams resolve via the table, not substring matching."""
     sink = _sink_with_stream(stream)
     assert sink._get_object_type() == object_type
     assert sink._get_lookup_field() == lookup_field
