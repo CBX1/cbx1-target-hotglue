@@ -33,6 +33,9 @@ class ApiSink(HotglueBaseSink):
         "associations_deals_contacts": "DEAL_CONTACT_LINK",
         "forms": "FORM",
         "form_submissions": "FORM_SUBMISSION",
+        "segments": "SEGMENT",
+        "segment_membership_changes": "SEGMENT_MEMBERSHIP_CHANGES",
+        "segment_membership_full_batch": "SEGMENT_MEMBERSHIP_FULL_BATCH",
     }
 
     # Exact stream name -> the field the backend upserts on. Deals key on the

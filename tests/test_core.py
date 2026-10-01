@@ -302,6 +302,20 @@ def test_exact_name_streams_route_correctly(stream, object_type, lookup_field):
     assert sink._get_lookup_field() == lookup_field
 
 
+@pytest.mark.parametrize(
+    ("stream", "object_type"),
+    [
+        ("segments", "SEGMENT"),
+        ("segment_membership_changes", "SEGMENT_MEMBERSHIP_CHANGES"),
+        ("segment_membership_full_batch", "SEGMENT_MEMBERSHIP_FULL_BATCH"),
+    ],
+)
+def test_segment_streams_route_correctly(stream, object_type):
+    """Only the object type is asserted: these records carry their own lookupKey,
+    so _get_lookup_field is never consulted for them."""
+    assert _sink_with_stream(stream)._get_object_type() == object_type
+
+
 @pytest.mark.parametrize("stream", ["associations_deals_companies", "associations_deals_contacts"])
 def test_link_streams_are_not_misrouted_to_account_or_contact(stream):
     """Regression guard for the substring-matching trap.
