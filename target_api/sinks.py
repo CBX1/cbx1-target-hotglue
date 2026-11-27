@@ -265,7 +265,7 @@ class BatchSink(ApiSink, HotglueBatchSink):
                 result = self.handle_batch_response(response, batch_records, batch_external_id)
 
                 for state in result.get("state_updates", []):
-                    self.update_state(state)
+                    self.update_state(state, is_duplicate=state.pop("is_duplicate", False))
 
                 summary = result.get("summary", {})
                 self.logger.info(
@@ -309,7 +309,9 @@ class BatchSink(ApiSink, HotglueBatchSink):
 
             # Map new status enum to boolean
             status = result.get("status")  # SUCCESS, FAILED, or SKIPPED
-            success = (status == "SUCCESS")
+            # SKIPPED means CBX1 already holds the record (e.g. a re-read form submission).
+            # Counting it as failed would fail the job and roll back the tap's bookmarks.
+            success = status in ("SUCCESS", "SKIPPED")
 
             state = {
                 "success": success,
@@ -317,6 +319,8 @@ class BatchSink(ApiSink, HotglueBatchSink):
                 "externalId": external_id,
                 "lookupKey": lookup_key,
             }
+            if status == "SKIPPED":
+                state["is_duplicate"] = True
 
             if batch_external_id:
                 state["hgBatchId"] = batch_external_id
