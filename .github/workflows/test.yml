@@ -7,13 +7,14 @@ on: [push]
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    # Pinned: the 26.04 image behind ubuntu-latest has no Python 3.9 build.
+    runs-on: ubuntu-24.04
     env:
       GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
     strategy:
       matrix:
         # Bounded by pyproject's `python = "<3.11,>=3.7.1"` on the high end
-        # (poetry refuses 3.11) and by the ubuntu-latest (24.04) runner image
+        # (poetry refuses 3.11) and by the ubuntu-24.04 runner image
         # on the low end (3.7/3.8 are EOL and no longer available).
         python-version: ["3.9", "3.10"]
     steps:
