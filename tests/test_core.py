@@ -384,3 +384,6 @@ def test_skipped_records_count_as_existing_not_failed(tmp_path, monkeypatch):
     summary = sink.latest_state["summary"]["form_submissions"]
     assert summary["fail"] == 1
     assert summary["existing"] == 1
+    # The SDK counts an existing record as a success too, so existing is a subset of success.
+    assert summary["success"] == 2
+    assert all("is_duplicate" not in state for state in sink.latest_state["bookmarks"]["form_submissions"])
