@@ -349,3 +349,38 @@ def test_existing_streams_keep_substring_routing(stream, object_type, lookup_fie
 def test_unknown_stream_still_raises():
     with pytest.raises(ValueError, match="Unsupported stream type"):
         _sink_with_stream("invoices")._get_object_type()
+
+
+def test_skipped_records_count_as_existing_not_failed(tmp_path, monkeypatch):
+    """A SKIPPED result (CBX1 already holds the record) must not fail the job."""
+    monkeypatch.setenv("BASE_URL", "http://cbx1.test/")
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"process_as_batch": True, "OrgId": "org-id"}))
+    target = TargetApi(config=[str(config_path)], validate_config=False)
+    target._process_schema_message(
+        {
+            "type": "SCHEMA",
+            "stream": "form_submissions",
+            "schema": {"type": "object", "properties": {"lookupKey": {"type": ["string", "null"]}}},
+            "key_properties": [],
+        }
+    )
+    sink = target.get_sink("form_submissions")
+    response = {
+        "data": {
+            "results": [
+                {"lookupKey": "new@example.com", "status": "SUCCESS", "entityId": "1"},
+                {"lookupKey": "seen@example.com", "status": "SKIPPED", "error": "Duplicate submission: 42"},
+                {"lookupKey": "bad@example.com", "status": "FAILED", "error": "boom"},
+            ]
+        }
+    }
+    monkeypatch.setattr(sink, "make_batch_request", lambda records: response)
+
+    sink.process_batch(
+        {"records": [{"lookupKey": key} for key in ("new@example.com", "seen@example.com", "bad@example.com")]}
+    )
+
+    summary = sink.latest_state["summary"]["form_submissions"]
+    assert summary["fail"] == 1
+    assert summary["existing"] == 1
